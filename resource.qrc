@@ -1,0 +1,11 @@
+<RCC>
+    <qresource prefix="/icon">
+        <file>WindowIcon.ico</file>
+    </qresource>
+    <qresource prefix="/BackGrand">
+        <file>BackGrand.png</file>
+    </qresource>
+    <qresource prefix="/text">
+        <file>quotes.txt</file>
+    </qresource>
+</RCC>
