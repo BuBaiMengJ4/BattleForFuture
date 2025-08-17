@@ -62,7 +62,9 @@ Gaokao-Fighter/
 │   └── utils/          # 工具类
 ├── resources/          # 资源文件
 │   ├── quotes/         # 励志名言库
+│   ├── music/          # 背景音乐
 │   └── icons/          # 图标资源
+├── docs/               # 文档
 └── CMakeLists.txt      # 构建配置
 ```
 
