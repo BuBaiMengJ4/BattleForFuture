@@ -28,7 +28,7 @@ graph TD
     B --> E[QWidgets负责主界面]
     B --> F[QDialog搭建小部件和设置界面]
     C --> G[QSettings记录配置]
-    C --> G[QFile记录激励话语]
+    C --> H[QFile记录激励话语]
     C --> I[QRandomGenerator随机生成激励语]
 ```
 
