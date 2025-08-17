@@ -35,15 +35,13 @@ graph TD
 ## 安装指南
 
 ### Windows
-```
 1. 下载压缩包 `BattleForFuture.zip`
 2. 解压到指定位置
 2. 启动程序 `BattleForFuture.exe`
-```
 
 ## 使用教程
 ```
-1.主页上的`缩小为桌面小部件`，可以化身为左面右上角的小部件，显示高考倒计时时刻提醒你。
+1.主页上的"缩小为桌面小部件"，可以化身为左面右上角的小部件，显示高考倒计时时刻提醒你。
 2.打开设置，可以在其中设定开机自启动。
 3.你可以设定程序启动时默认为小部件。
 4.你可以在设置中快捷而方便的更改适合你的鼓励语句。
@@ -74,13 +72,12 @@ BattleForFuture/
 ## 贡献指南
 
 我们欢迎任何形式的贡献！请遵循以下步骤：
-```
-1. Fork 项目仓库
-2. 创建你的特性分支 (`git checkout -b BattleForFuture/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin BattleForFuture/AmazingFeature`)
-5. 提交 Pull Request
-```
+
+- 1. Fork 项目仓库  
+- 2. 创建你的特性分支 (`git checkout -b BattleForFuture/AmazingFeature`)
+- 3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+- 4. 推送到分支 (`git push origin BattleForFuture/AmazingFeature`)
+- 5. 提交 Pull Request
 
 ## 联系我们
 
