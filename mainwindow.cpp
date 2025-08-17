@@ -8,11 +8,22 @@ MainWindow::MainWindow(QWidget *parent)
 {
     ui->setupUi(this);
 
+    //读取设置内容，并判断需要呈现的窗口
+    if(QFile::exists(appDir+"//config.ini")){
+    QSettings settings(appDir+"//config.ini",QSettings::IniFormat);
+    if(settings.value("Start/StartAsWidget").toBool())
+        this->show();
+    else
+        on_pushButton_clicked();
+    }
+    else
+        this->show();
+
     ui->CountdownGK->display(calculateRemainingDays(QDate(2026,6,7)));
     ui->CountdownYM->display(calculateRemainingDays(QDate(2026,3,17)));
 
     //从文件中读取鼓励语句(如若后期添加，尽量不超过20字，避免显示不全）
-    QFile file(":/text/quotes.txt");
+    QFile file(filePath);
     if(file.open(QIODevice::ReadOnly)) {
         QTextStream stream(&file);
         while(!stream.atEnd()) {
@@ -85,8 +96,7 @@ void MainWindow::on_Settings_clicked()
     if (!pagesWidget) {
     pagesWidget = new QStackedWidget(SettingWindow);
     pagesWidget->addWidget(createGeneralPage());
-    pagesWidget->addWidget(createAppearancePage());
-    pagesWidget->addWidget(createAdvancedPage());
+    pagesWidget->addWidget(createWordEditPage());
     pagesWidget->addWidget(createAboutPage());
     }
     rightLayout->addWidget(pagesWidget);
@@ -159,7 +169,7 @@ QListWidget* MainWindow::createCategoryList() {
 
     // 添加分类项
     QStringList categories = {
-        "常规设置", "界面选项","高级设置", "关于"
+        "常规设置", "文字编辑", "关于"
     };
 
     for (const QString &category : categories) {
@@ -179,126 +189,136 @@ QWidget* MainWindow::createGeneralPage()
     QLabel *title = new QLabel("常规设置");
     title->setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 15px;");
 
-    // 语言设置
-    QGroupBox *languageGroup = new QGroupBox("语言选项");
-    languageGroup->setStyleSheet("QGroupBox { font-weight: bold; }");
-    QVBoxLayout *languageLayout = new QVBoxLayout(languageGroup);
-
-    QComboBox *languageCombo = new QComboBox;
-    languageCombo->addItems({"简体中文", "English", "Español", "Français", "日本語"});
-    languageLayout->addWidget(languageCombo);
-
     // 启动选项
     QGroupBox *startupGroup = new QGroupBox("启动选项");
     startupGroup->setStyleSheet("QGroupBox { font-weight: bold; }");
     QVBoxLayout *startupLayout = new QVBoxLayout(startupGroup);
 
     QCheckBox *autoStart = new QCheckBox("开机自动启动");
-    QCheckBox *checkUpdates = new QCheckBox("启动时自动检查更新");
-
+    QCheckBox *smallAsWidget = new QCheckBox("启动时自动打开到小部件");
     startupLayout->addWidget(autoStart);
-    startupLayout->addWidget(checkUpdates);
+    startupLayout->addWidget(smallAsWidget);
+
+    //读取设置并设置复选框初始状态
+    QSettings initSettings(appDir + "//config.ini", QSettings::IniFormat);
+    initSettings.beginGroup("Start");
+    bool startAsWidget = initSettings.value("StartAsWidget", 1).toBool();
+    smallAsWidget->setChecked(!startAsWidget);
+    initSettings.endGroup();
+
+    QSettings Startsetting("HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
+    QString appName = QCoreApplication::applicationName();
+    QString appPath = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
+    bool autostart = Startsetting.contains(appName);
+    autoStart->setChecked(autostart);
+
+
+    //设置开机自启动
+    connect(autoStart, &QCheckBox::stateChanged, pagesWidget, [=](int state) {
+        // 防止递归调用
+        if (m_isSettingAutoStart) return;
+
+        QSettings settings("HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run",QSettings::NativeFormat);
+        if (state == Qt::Checked) {
+            m_isSettingAutoStart = true;
+            QMessageBox::StandardButton reply = QMessageBox::question(pagesWidget,"确认","确定要设置为开机自启动吗？",QMessageBox::Yes | QMessageBox::No);
+            if (reply == QMessageBox::Yes) {
+                settings.setValue(appName, appPath);
+            } else {
+                // 延迟设置，避免立即触发信号
+                QMetaObject::invokeMethod(pagesWidget, [=] {
+                    autoStart->setChecked(false);
+                    m_isSettingAutoStart = false;
+                }, Qt::QueuedConnection);
+                return; // 直接返回，不执行后续代码
+            }
+            //重置状态
+            m_isSettingAutoStart = false;
+        } else {
+            settings.remove(appName);
+        }
+
+    });
+
+
+    connect(smallAsWidget, &QCheckBox::stateChanged, [=](int state) {
+        QSettings settings(appDir + "//config.ini", QSettings::IniFormat);
+
+        settings.beginGroup("Start");
+        if(state == Qt::Checked) {
+        settings.setValue("StartAsWidget", 0);
+        } else {
+        settings.setValue("StartAsWidget", 1);
+        }
+        settings.endGroup();
+        settings.sync();
+    });
 
     layout->addWidget(title);
-    layout->addWidget(languageGroup);
     layout->addWidget(startupGroup);
 
     return page;
 }
 
-//设置“界面选项”详细内容
-QWidget* MainWindow::createAppearancePage() {
+//设置“文字编辑”详细内容
+QWidget* MainWindow::createWordEditPage() {
     QWidget *page = new QWidget;
     QVBoxLayout *layout = new QVBoxLayout(page);
     layout->setAlignment(Qt::AlignTop);
 
-    QLabel *title = new QLabel("界面选项");
+    QLabel *title = new QLabel("文字编辑");
     title->setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 15px;");
 
-    // 主题设置
-    QGroupBox *themeGroup = new QGroupBox("主题设置");
-    themeGroup->setStyleSheet("QGroupBox { font-weight: bold; }");
-    QVBoxLayout *themeLayout = new QVBoxLayout(themeGroup);
+    //编辑鼓励话语
+    QLabel* EncourageText =new QLabel;
+    EncourageText ->setText("编辑鼓励语句（在首页中出现）");
+    EncourageText ->setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50; margin-bottom: 15px;");
+    QPushButton* save =new QPushButton;
+    save->setText("保存");
+    save->setStyleSheet(
+        "QPushButton {"
+        "   background-color: #aaff7f;"
+        "   color: balck;"
+        "   padding: 8px 16px;"
+        "   border-radius: 4px;"
+        "}"
+        "QPushButton:hover {"
+        "   background-color: #55ff00;"
+        "}"
+        );
 
-    QComboBox *themeCombo = new QComboBox;
-    themeCombo->addItems({"浅色主题", "深色主题", "自动（跟随系统）"});
-    themeLayout->addWidget(themeCombo);
+    QTextEdit* TextForEncourage = new QTextEdit;
+    QFile file(filePath);
+    if(file.open(QIODevice::ReadOnly)) {
+        QTextStream stream(&file);
+        while(!stream.atEnd()) {
+            TextForEncourage->setText(stream.readAll());
+        }
+        file.close();
+    }
 
-    // 字体设置
-    QGroupBox *fontGroup = new QGroupBox("字体设置");
-    fontGroup->setStyleSheet("QGroupBox { font-weight: bold; }");
-    QGridLayout *fontLayout = new QGridLayout(fontGroup);
+    connect(save, &QPushButton::clicked, [=](){
+        QString Write = TextForEncourage->toPlainText();
 
-    QLabel *fontLabel = new QLabel("界面字体:");
-    QComboBox *fontCombo = new QComboBox;
-    fontCombo->addItems(QFontDatabase::families());
-
-    QLabel *sizeLabel = new QLabel("字体大小:");
-    QComboBox *sizeCombo = new QComboBox;
-    sizeCombo->addItems({"9", "10", "11", "12", "13", "14", "15", "16"});
-
-    QCheckBox *customFont = new QCheckBox("使用自定义字体");
-
-    fontLayout->addWidget(fontLabel, 0, 0);
-    fontLayout->addWidget(fontCombo, 0, 1);
-    fontLayout->addWidget(sizeLabel, 1, 0);
-    fontLayout->addWidget(sizeCombo, 1, 1);
-    fontLayout->addWidget(customFont, 2, 0, 1, 2);
+        QFile file(filePath);
+        if(file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+            QTextStream stream(&file);
+            stream.setEncoding(QStringConverter::Utf8);
+            stream << Write;
+            file.close();
+            QMessageBox::information(pagesWidget,"成功","文件保存成功！");
+        }
+    });
 
     layout->addWidget(title);
-    layout->addWidget(themeGroup);
-    layout->addWidget(fontGroup);
+    layout->addWidget(EncourageText);
+    layout->addWidget(TextForEncourage,1);
+    layout->addWidget(save);
     layout->addStretch();
 
     return page;
 }
 
-//设置“高级设置”详细内容
-QWidget* MainWindow::createAdvancedPage() {
-    QWidget *page = new QWidget;
-    QVBoxLayout *layout = new QVBoxLayout(page);
-    layout->setAlignment(Qt::AlignTop);
-
-    QLabel *title = new QLabel("高级设置");
-    title->setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 15px;");
-
-    // 网络设置
-    QGroupBox *networkGroup = new QGroupBox("网络设置");
-    networkGroup->setStyleSheet("QGroupBox { font-weight: bold; }");
-    QGridLayout *networkLayout = new QGridLayout(networkGroup);
-
-    QLabel *proxyLabel = new QLabel("代理服务器:");
-    QLineEdit *proxyEdit = new QLineEdit;
-    QLabel *portLabel = new QLabel("端口:");
-    QLineEdit *portEdit = new QLineEdit;
-    QCheckBox *useProxy = new QCheckBox("使用代理服务器");
-
-    networkLayout->addWidget(useProxy, 0, 0, 1, 2);
-    networkLayout->addWidget(proxyLabel, 1, 0);
-    networkLayout->addWidget(proxyEdit, 1, 1);
-    networkLayout->addWidget(portLabel, 2, 0);
-    networkLayout->addWidget(portEdit, 2, 1);
-
-    // 开发者选项
-    QGroupBox *devGroup = new QGroupBox("开发者选项");
-    devGroup->setStyleSheet("QGroupBox { font-weight: bold; }");
-    QVBoxLayout *devLayout = new QVBoxLayout(devGroup);
-
-    QCheckBox *debugMode = new QCheckBox("启用调试模式");
-    QCheckBox *logVerbose = new QCheckBox("详细日志记录");
-    QCheckBox *experimental = new QCheckBox("显示实验性功能");
-
-    devLayout->addWidget(debugMode);
-    devLayout->addWidget(logVerbose);
-    devLayout->addWidget(experimental);
-
-    layout->addWidget(title);
-    layout->addWidget(networkGroup);
-    layout->addWidget(devGroup);
-    layout->addStretch();
-
-    return page;
-}
 
 //设置“关于”详细内容
 QWidget* MainWindow::createAboutPage() {

@@ -16,14 +16,15 @@
 #include <QListWidget>
 #include <QStackedWidget>
 #include <QGroupBox>
-#include <QComboBox>
 #include <QCheckBox>
 #include <QPropertyAnimation>
 #include <QUrl>
 #include <QDesktopServices>
 #include <QFile>
-#include <QLineEdit>
-#include <QFontDatabase>
+#include <QMessageBox>
+#include <QTextEdit>
+#include <QDir>
+#include <QSettings>
 
 namespace Ui {
 class MainWindow;
@@ -39,6 +40,10 @@ public:
 
     //鼓励语句(./text/quotes.txt)
     QStringList quotes;
+    // 应用程序所在目录
+    QString appDir = QCoreApplication::applicationDirPath();
+    // quotes.txt的完整路径
+    QString filePath = QDir(appDir).filePath("Assets/quotes.txt");
 
     ~MainWindow();
 
@@ -52,6 +57,8 @@ private:
     QDialog *SettingWindow = new QDialog(this);
     //设置右侧堆叠窗口
     QStackedWidget* pagesWidget = nullptr;
+    //设置复选框“开机自启动”状态标志，防止被递归调用
+    bool m_isSettingAutoStart = false;
 
     //计算相差天数
     int calculateRemainingDays(const QDate &targetDate);
@@ -64,9 +71,7 @@ private:
     //设置“常规设置”详细内容
     QWidget* createGeneralPage();
     //设置“界面选项”详细内容
-    QWidget* createAppearancePage();
-    //设置“高级设置”详细内容
-    QWidget* createAdvancedPage();
+    QWidget* createWordEditPage();
     //设置“关于”详细内容
     QWidget* createAboutPage();
 };

@@ -5,7 +5,4 @@
     <qresource prefix="/BackGrand">
         <file>BackGrand.png</file>
     </qresource>
-    <qresource prefix="/text">
-        <file>quotes.txt</file>
-    </qresource>
 </RCC>
