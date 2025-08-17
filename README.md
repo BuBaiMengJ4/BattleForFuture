@@ -36,8 +36,9 @@ graph TD
 
 ### Windows
 ```
-1. 下载程序 `BattleForFuture.exe`
-2. 启动程序
+1. 下载压缩包 `BattleForFuture.zip`
+2. 解压到指定位置
+2. 启动程序 `BattleForFuture.exe`
 ```
 
 ## 使用教程
