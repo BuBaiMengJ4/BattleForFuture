@@ -96,6 +96,7 @@ void MainWindow::on_Settings_clicked()
     if (!pagesWidget) {
     pagesWidget = new QStackedWidget(SettingWindow);
     pagesWidget->addWidget(createGeneralPage());
+    pagesWidget->addWidget(createAppearancePage());
     pagesWidget->addWidget(createWordEditPage());
     pagesWidget->addWidget(createAboutPage());
     }
@@ -169,13 +170,15 @@ QListWidget* MainWindow::createCategoryList() {
 
     // 添加分类项
     QStringList categories = {
-        "常规设置", "文字编辑", "关于"
+        "常规设置","外观设置" ,"文字编辑", "关于"
     };
 
     for (const QString &category : categories) {
         QListWidgetItem *item = new QListWidgetItem(category, categoryList);
         item->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);//文本左对齐且垂直居中
     }
+
+    categoryList->setCurrentRow(0); //显示菜单栏的第一栏被点击，优化视觉体验
     return categoryList;
 }
 
@@ -258,6 +261,74 @@ QWidget* MainWindow::createGeneralPage()
     layout->addWidget(startupGroup);
 
     return page;
+}
+
+//设置“外观设置”选项
+QWidget* MainWindow::createAppearancePage()
+{
+    QWidget *page = new QWidget;
+    QVBoxLayout *layout = new QVBoxLayout(page);
+    layout->setAlignment(Qt::AlignTop);
+
+    QLabel *title = new QLabel("小组件颜色选择");
+    title->setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 15px;");
+
+    QGroupBox *WidgetSet = new QGroupBox("小组件设置");
+    QVBoxLayout *WidgetSetLayout = new QVBoxLayout(WidgetSet);
+    QHBoxLayout *setcolor = new QHBoxLayout;
+    QLabel *SetBackGrandColor = new QLabel("设置你的小组件背景色：");
+    QPushButton *backgrandcolor = new QPushButton;
+    backgrandcolor->setObjectName("backgrandcolor"); // 设置对象名以便样式表使用
+
+    // 从设置加载初始颜色
+    QSettings settings(appDir + "//config.ini", QSettings::IniFormat);
+    settings.beginGroup("Widget");
+    QColor initialColor = settings.value("BackGrandColor", QColor(255, 0, 0)).value<QColor>();  //若为读取到，使用默认颜色（255,0,0）
+    settings.endGroup();
+
+
+    // 设置初始样式
+    updateButtonColor(backgrandcolor, initialColor);
+
+    connect(backgrandcolor, &QPushButton::clicked, [this, backgrandcolor]() {
+        QColor currentColor = backgrandcolor->palette().button().color();
+        QColor color = QColorDialog::getColor(currentColor, this, "请选择颜色");
+
+        if (color.isValid()) {
+            // 更新按钮颜色显示
+            updateButtonColor(backgrandcolor, color);
+
+            // 保存颜色设置
+            QSettings settings(appDir + "//config.ini", QSettings::IniFormat);
+            settings.beginGroup("Widget");
+            settings.setValue("BackGrandColor", color);
+            settings.endGroup();
+            }
+        });
+
+    setcolor->addWidget(SetBackGrandColor);
+    setcolor->addWidget(backgrandcolor);
+    WidgetSetLayout->addLayout(setcolor);
+    layout->addWidget(title);
+    layout->addWidget(WidgetSet);
+
+    return page;
+}
+
+// 辅助函数：更新按钮颜色显示
+void MainWindow::updateButtonColor(QPushButton* button, const QColor& color)
+{
+    QString style = QString("QPushButton#backgrandcolor { "
+                            "background-color: %1; "
+                            "color: %2; "
+                            "border: 1px solid #cccccc; "
+                            "padding: 5px; "
+                            "border-radius: 3px; }")
+                        .arg(color.name())
+                        .arg(color.lightness() > 128 ? "black" : "white"); //确保了文本在任何背景色上都有良好的可读性
+
+    button->setStyleSheet(style);
+    button->setText(QString("当前颜色: %1").arg(color.name()));
 }
 
 //设置“文字编辑”详细内容
@@ -354,7 +425,7 @@ QWidget* MainWindow::createAboutPage() {
         );
     websiteBtn->setCursor(Qt::PointingHandCursor);
     connect(websiteBtn,&QPushButton::clicked,[=]()
-            {QDesktopServices::openUrl(QUrl("https://github.com/your-username/your-project"));});
+            {QDesktopServices::openUrl(QUrl("https://github.com/BuBaiMengJ4/BattleForFuture"));});
 
     layout->addStretch();
     layout->addWidget(title);
@@ -378,8 +449,13 @@ void MainWindow::on_pushButton_clicked()
     QScreen *desktop=QApplication::primaryScreen();
     WidgetWindow->resize(250,200);
     WidgetWindow->move(desktop->geometry().width()-WidgetWindow->width(),0);
-    WidgetWindow->setStyleSheet("#WidgetWindow {background-color: rgb(255, 212, 0);border: 1px solid #E0D0A0;"
-                                "border-radius: 10px;}");  //黄色背景，圆角
+    //读取用户预设样式
+    QSettings settings(appDir + "//config.ini", QSettings::IniFormat);
+    settings.beginGroup("Widget");
+    QColor initialColor = settings.value("BackGrandColor", QColor(255, 0, 0)).value<QColor>();
+    settings.endGroup();
+    QString style= QString("#WidgetWindow {background-color: %1;border: 1px solid #E0D0A0;border-radius: 10px;}").arg(initialColor.name());
+    WidgetWindow->setStyleSheet(style);
     WidgetWindow->show();
 
     QPushButton* Exit = new QPushButton(WidgetWindow);QPushButton* ReturnMain = new QPushButton(WidgetWindow);

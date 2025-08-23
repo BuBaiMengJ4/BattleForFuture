@@ -25,6 +25,7 @@
 #include <QTextEdit>
 #include <QDir>
 #include <QSettings>
+#include <QColorDialog>
 
 namespace Ui {
 class MainWindow;
@@ -68,9 +69,14 @@ private:
     // 创建左侧分类列表
     QListWidget* createCategoryList();
 
+    //负责按钮样式的更新
+    void updateButtonColor(QPushButton* button, const QColor& color);
+
     //设置“常规设置”详细内容
     QWidget* createGeneralPage();
-    //设置“界面选项”详细内容
+    //设置“外观设置”选项
+    QWidget* createAppearancePage();
+    //设置“文字编辑”详细内容
     QWidget* createWordEditPage();
     //设置“关于”详细内容
     QWidget* createAboutPage();
