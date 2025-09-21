@@ -2,13 +2,9 @@ QT       += core gui
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
-# 设置程序版本
-VERSION = 1.0.0
-
-# 设置程序图标
+# 程序信息
+VERSION = 2.0.0
 RC_ICONS = WindowIcon.ico
-
-# 设置开发者和app名称
 QMAKE_TARGET_COMPANY = "Explorer"
 QMAKE_TARGET_DESCRIPTION = "This is a test application"
 QMAKE_TARGET_PRODUCT = "BattleForFurture"
@@ -36,3 +32,8 @@ else: unix:!android: target.path = /opt/$${TARGET}/bin
 
 RESOURCES += \
     resource.qrc
+
+TRANSLATIONS += \
+    BattleForFuture_zh_CN.ts \
+    BattleForFuture_zh_HK.ts
+

@@ -1,6 +1,7 @@
 <RCC>
     <qresource prefix="/icon">
         <file>WindowIcon.ico</file>
+        <file>setting.ico</file>
     </qresource>
     <qresource prefix="/BackGrand">
         <file>BackGrand.png</file>

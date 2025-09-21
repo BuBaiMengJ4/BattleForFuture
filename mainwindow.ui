@@ -244,8 +244,17 @@
      <layout class="QHBoxLayout" name="horizontalLayout_4">
       <item>
        <widget class="QPushButton" name="pushButton">
+        <property name="styleSheet">
+         <string notr="true"> QPushButton#pushButton { 
+    &quot;   background-color: #3498db; &quot;
+    &quot;   color: white; &quot;
+    &quot;   border: 1px solid #cccccc; &quot;
+    &quot;   padding: 5px; &quot;
+    &quot;   border-radius: 3px; &quot;
+    }</string>
+        </property>
         <property name="text">
-         <string>缩小为桌面小部件</string>
+         <string>小部件模式</string>
         </property>
        </widget>
       </item>
@@ -284,8 +293,27 @@
       </item>
       <item>
        <widget class="QPushButton" name="Settings">
+        <property name="minimumSize">
+         <size>
+          <width>50</width>
+          <height>50</height>
+         </size>
+        </property>
+        <property name="styleSheet">
+         <string notr="true">background-color: transparent;</string>
+        </property>
         <property name="text">
-         <string>⚙</string>
+         <string/>
+        </property>
+        <property name="icon">
+         <iconset resource="resource.qrc">
+          <normaloff>:/icon/setting.ico</normaloff>:/icon/setting.ico</iconset>
+        </property>
+        <property name="iconSize">
+         <size>
+          <width>50</width>
+          <height>50</height>
+         </size>
         </property>
        </widget>
       </item>
