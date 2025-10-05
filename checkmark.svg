@@ -1,0 +1,11 @@
+<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .checkmark {
+      stroke: #fff;
+      stroke-width: 2.5;
+      stroke-dashoffset: 0;
+    }
+  </style>
+  <rect width="20" height="20" rx="4" fill="#0078d7"/>
+  <path class="checkmark" d="M3.5 9.5L8 14L16.5 5.5" fill="none"/>
+</svg>

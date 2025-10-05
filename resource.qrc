@@ -1,8 +1,13 @@
 <RCC>
     <qresource prefix="/icon">
         <file>WindowIcon.ico</file>
+        <file>Settings.png</file>
+        <file>checkmark.svg</file>
     </qresource>
     <qresource prefix="/BackGrand">
         <file>BackGrand.png</file>
+    </qresource>
+    <qresource prefix="/Translation">
+        <file>BattleForFuture_zh_HK.qm</file>
     </qresource>
 </RCC>
