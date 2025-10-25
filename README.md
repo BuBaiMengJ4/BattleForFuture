@@ -72,7 +72,7 @@ graph TD
 2. 根据安装文件提示进行操作
 2. 启动程序 `BattleForFuture.exe`
 ```
-###Linux
+### Linux
 ```
 1.下载安装包 `BattleForFuture-AMD64.deb"
 2.运行命令 `sudo dpkg -i ./BattleForFuture-AMD64.deb`
