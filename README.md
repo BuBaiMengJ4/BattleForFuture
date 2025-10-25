@@ -12,12 +12,35 @@
 
 ### 🚀 高考倒计时
 - 动态显示距离高考和一模的天数
+![主页](https://github.com/BuBaiMengJ4/BattleForFuture/blob/main/Image/Home.png?raw=true)
+
+- 化身桌面小部件，让你时刻看见高考倒计时，激发你的斗志
+  
+![桌面小组件](https://github.com/BuBaiMengJ4/BattleForFuture/blob/main/Image/Widget.png?raw=true)
 
 ### 💪 智能激励
 - 每日随机励志名言（如"今日不肯埋头，明日何以抬头"）
+- 支持通过系统推送服务进行启动推送
+  
+![系统推送](https://raw.githubusercontent.com/BuBaiMengJ4/BattleForFuture/refs/heads/main/Image/Notice.png)
 
-### 桌面小部件
-- 化身桌面小部件，让你时刻看见高考倒计时，激发你的斗志
+### 🎉 定制化
+- 可以设置你的高考年份
+  > 默认是6月13日前的判定是今年，否则默认明年
+- 同时支持简体和繁体中文
+  
+![设置1](https://github.com/BuBaiMengJ4/BattleForFuture/blob/main/Image/Setting1.png?raw=true)
+
+- 支持更改小组件的背景颜色
+- 支持更改小组件显示的内容
+
+![设置2](https://github.com/BuBaiMengJ4/BattleForFuture/blob/main/Image/Setting2.png?raw=true)
+
+- 可以自定义鼓励语句
+
+![设置3](https://github.com/BuBaiMengJ4/BattleForFuture/blob/main/Image/Setting3.png?raw=true)
+
+
 
 ## 技术架构
 
@@ -28,6 +51,7 @@ graph TD
     
     B --> E[QWidgets负责主界面]
     B --> F[QDialog搭建小部件和设置界面]
+    B --> J[QSystemTray进行系统推送服务]
     C --> G[QSettings记录配置]
     C --> H[QFile记录激励话语]
     C --> I[QRandomGenerator随机生成激励语]
@@ -36,26 +60,23 @@ graph TD
 ## 安装指南
 
 ### Windows
-##方法一：
+- 方法一：
 ```
 1. 下载压缩包 `BattleForFuture.zip`
 2. 解压到指定位置
 2. 启动程序 `BattleForFuture.exe`
 ```
-##方法二：
+- 方法二：
 ```
-1. 下载压缩包 `BattleForFuture.exe`
+1. 下载安装包 `BattleForFuture.exe`
 2. 根据安装文件提示进行操作
 2. 启动程序 `BattleForFuture.exe`
 ```
-
-## 使用教程
+###Linux
 ```
-1.主页上的"缩小为桌面小部件"，可以化身为左面右上角的小部件，显示高考倒计时时刻提醒你。
-
-2.打开设置，可以在其中设定开机自启动。
-3.你可以设定程序启动时默认为小部件。
-4.你可以在设置中快捷而方便的更改适合你的鼓励语句。
+1.下载安装包 `BattleForFuture-AMD64.deb"
+2.运行命令 `sudo dpkg -i ./BattleForFuture-AMD64.deb`
+3.在根目录下启动AppRun
 ```
 
 ### 开发环境
