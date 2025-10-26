@@ -64,10 +64,10 @@ graph TD
 
 ## 安装指南
 
-### Windows
+## Windows
 - 方法一：
 ```
-1. 下载压缩包 `BattleForFuture.zip`
+1. 下载压缩包 `BattleForFuture-Windows.zip`
 2. 解压到指定位置
 2. 启动程序 `BattleForFuture.exe`
 ```
@@ -77,20 +77,30 @@ graph TD
 2. 根据安装文件提示进行操作
 2. 启动程序 `BattleForFuture.exe`
 ```
-### Linux
+## Linux
+- 方法一：
 ```
 1.下载安装包 `BattleForFuture-AMD64.deb"
 2.运行命令 `sudo dpkg -i ./BattleForFuture-AMD64.deb -B /usr/bin`
-3.在根目录下启动AppRun
+3.在"/usr/bin"目录下启动AppRun
 ```
-
+- 方法二：
+```
+1. 下载压缩包 `BattleForFuture-Linux.zip`
+2. 解压到指定位置
+2. 启动AppRun
+```
 ### 开发环境
-
+## Windows环境
 - Qt 6.8.3
 - qmake
 - MSVC 2022,x86_64
 
-
+## Linux环境
+- Qt 6.8.3
+- qmake
+- Debian 12
+- GCC 13.3.0
 
 ### 项目结构
 ```
