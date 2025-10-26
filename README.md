@@ -86,7 +86,7 @@ graph TD
 ```
 - 方法二：
 ```
-1. 下载压缩包 `BattleForFuture-Linux.zip`
+1. 下载压缩包 `BattleForFuture-Linux.tar.gz`
 2. 解压到指定位置
 2. 启动AppRun
 ```
