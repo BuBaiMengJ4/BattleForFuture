@@ -1,9 +1,14 @@
 # BattleForFuture
 这是一个适用于高考生的倒计时小工具
 
+![Version](https://img.shields.io/badge/Version-2.0.0-brightgreen)
+![GitHub](https://img.shields.io/badge/GitHub-181717?&logo=github&logoColor=white)
+![Gitee](https://img.shields.io/badge/Gitee-609926?&logo=gitee&logoColor=white)
+
 ![Platform](https://img.shields.io/badge/Platform-Windows-lightblue)
 ![Platform](https://img.shields.io/badge/Platform-Linux-lightyellow)
-![Version](https://img.shields.io/badge/Version-2.0.0-brightgreen)
+![Debian](https://img.shields.io/badge/Debian-A81D33?logo=debian&logoColor=white)
+![Ubuntu](https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white)
 
 
 > "乾坤未定，你我皆黑马！" - 让BattleForFuture成为你的高考战友
@@ -75,7 +80,7 @@ graph TD
 ### Linux
 ```
 1.下载安装包 `BattleForFuture-AMD64.deb"
-2.运行命令 `sudo dpkg -i ./BattleForFuture-AMD64.deb`
+2.运行命令 `sudo dpkg -i ./BattleForFuture-AMD64.deb -B /usr/bin`
 3.在根目录下启动AppRun
 ```
 
