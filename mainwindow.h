@@ -10,7 +10,9 @@ class QStackedWidget;
 class QListWidget;
 class QPushButton;
 class QWidget;
+class QCloseEvent;
 class DesktopWidget;
+class OverlayWidget;
 
 /**
  * @brief 主窗口：高考倒计时 + 设置对话框 + 桌面小组件入口
@@ -30,7 +32,11 @@ public:
 
 private slots:
     void on_Settings_clicked();       // 打开设置对话框
-    void on_pushButton_clicked();     // 缩小为桌面小部件
+    void on_pushButton_clicked();     // 缩小为桌面小部件（按设置的样式创建）
+
+protected:
+    /// 关闭主窗口时：若小组件正在显示则一并退出程序，避免“无可见窗口的僵尸实例”
+    void closeEvent(QCloseEvent *event) override;
 
 private:
     Ui_MainWindow *ui;
@@ -50,7 +56,8 @@ private:
     QListWidget *categoryList = nullptr;
     bool m_isSettingAutoStart = false;        // 防止复选框信号递归
 
-    DesktopWidget *m_desktopWidget = nullptr; // 小组件单例，防止反复创建泄漏
+    QWidget *m_desktopWidget = nullptr;       // 小组件单例（样式1/样式2 二选一），防止泄漏
+    QPushButton *m_bgColorBtn = nullptr;      // “选择背景色”按钮（样式2 时禁用）
 
     // ---------- 工具函数 ----------
     /// 计算相差天数（目标日期已过返回 0）
@@ -65,6 +72,8 @@ private:
     QString randomQuote() const;
     /// 更新主页倒计时显示
     void updateCountdowns();
+    /// 销毁当前小组件实例（切换样式/返回主界面时调用）
+    void destroyDesktopWidget();
 
     // ---------- 设置页面 ----------
     void buildSettingDialog();        // 一次性构建对话框内容
@@ -74,6 +83,8 @@ private:
     QWidget *createWordEditPage();
     QWidget *createAboutPage();
     void updateButtonColor(QPushButton *button, const QColor &color);
+    /// 依据小组件样式启用/禁用“选择背景色”（样式2 无背景色概念）
+    void applyStyleDependentEnabled(int style);
 };
 
 #endif // MAINWINDOW_H

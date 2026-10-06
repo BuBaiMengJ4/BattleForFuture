@@ -1,9 +1,12 @@
 #include "mainwindow.h"
 #include "desktopwidget.h"
+#include "overlaywidget.h"
+#include "widgetstyle.h"
 #include "logger.h"
 #include "ui_mainwindow.h"
 
 #include <QCheckBox>
+#include <QCloseEvent>
 #include <QColorDialog>
 #include <QGroupBox>
 #include <QComboBox>
@@ -131,7 +134,14 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
     // 随机鼓励语
     QFont quoteFont(QStringLiteral("楷体"), 20);
     ui->label_5->setFont(quoteFont);
-    if (loadQuotes())
+    const bool noticeOn = [&]() {
+        bool on = true;
+        withSettings(configPath, [&](QSettings &s) {
+            on = s.value(QStringLiteral("Global/Notice"), true).toBool();
+        });
+        return on;
+    }();
+    if (loadQuotes() && noticeOn)
         ui->label_5->setText(randomQuote());
     else
         ui->label_5->setText(tr("请在设置中添加鼓励语"));
@@ -149,6 +159,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent), ui(new Ui::MainWi
         on_pushButton_clicked();
     } else {
         show();
+        // 修复 Windows 下开机自启时“进程活着但窗口不弹出”：
+        // 显式把窗口抬到前台并激活，避免被其他启动项窗口压在下面。
+        raise();
+        activateWindow();
     }
 }
 
@@ -156,6 +170,18 @@ MainWindow::~MainWindow()
 {
     delete ui;
     ui = nullptr;
+}
+
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    // 若小组件正在显示（主界面已隐藏），关闭主界面意味着用户想退出程序，
+    // 而不是留下一个没有任何可见窗口的后台实例（这正是 Windows 上
+    // “下次启动看不到窗口”的僵尸实例来源之一）。
+    if (m_desktopWidget && m_desktopWidget->isVisible()) {
+        Logger::info(QStringLiteral("关闭主界面时小组件仍在运行，按退出处理"));
+        qApp->quit();
+    }
+    QMainWindow::closeEvent(event);
 }
 
 // ============================= 工具函数 =============================
@@ -233,40 +259,57 @@ QString MainWindow::randomQuote() const
 
 // ============================= 桌面小组件 =============================
 
+void MainWindow::destroyDesktopWidget()
+{
+    if (!m_desktopWidget)
+        return;
+    QWidget *w = m_desktopWidget;
+    m_desktopWidget = nullptr; // 先置空，避免 destroyed 回调再次进入
+    w->close();
+    deleteLater(w);
+}
+
 void MainWindow::on_pushButton_clicked()
 {
     try {
-        QColor bgColor(255, 0, 0);
-        bool showYiMo = false;
-        withSettings(configPath, [&](QSettings &s) {
-            s.beginGroup(QStringLiteral("Widget"));
-            bgColor = s.value(QStringLiteral("BackGrandColor"), bgColor).value<QColor>();
-            showYiMo = s.value(QStringLiteral("showcontent"), 0).toInt() == 1;
-            s.endGroup();
-        });
+        const WidgetConfig cfg = WidgetConfig::load(configPath);
 
-        if (!m_desktopWidget) {
-            m_desktopWidget = new DesktopWidget(bgColor, showYiMo, gaokaoDate, yimoDate, this);
-            connect(m_desktopWidget, &DesktopWidget::returnToMainRequested, this, [this]() {
-                if (m_desktopWidget)
-                    m_desktopWidget->hide();
+        // 销毁旧实例（可能样式已被用户切换）
+        destroyDesktopWidget();
+
+        auto wireReturnToMain = [this](QObject *widgetObj) {
+            connect(widgetObj, &DesktopWidget::returnToMainRequested, this, [this]() {
+                destroyDesktopWidget();
                 show();
+                raise();
+                activateWindow();
                 updateCountdowns(); // 返回主界面时刷新倒计时
             });
-            // 关闭小组件（例如退出）时清空指针
-            m_desktopWidget->setAttribute(Qt::WA_DeleteOnClose);
-            connect(m_desktopWidget, &QObject::destroyed, this,
-                    [this]() { m_desktopWidget = nullptr; });
+        };
+
+        if (cfg.style == WidgetConfig::Style2) {
+            // 样式 2：Qt Quick 透明覆盖层（右下角、无标题栏、背景自动禁用）
+            auto *overlay = new OverlayWidget(cfg.textColor, cfg.lcdColor,
+                                              cfg.showYiMo, gaokaoDate, yimoDate, nullptr);
+            QObject::connect(overlay, &OverlayWidget::returnToMainRequested, this, [this]() {
+                destroyDesktopWidget();
+                show();
+                raise();
+                activateWindow();
+                updateCountdowns();
+            });
+            m_desktopWidget = overlay;
         } else {
-            // 复用已有实例前，按最新配置刷新外观与内容
-            m_desktopWidget->close();
-            m_desktopWidget = nullptr;
-            on_pushButton_clicked();
-            return;
+            // 样式 1：现有圆角卡片小组件
+            auto *card = new DesktopWidget(cfg.bgColor, cfg.textColor, cfg.lcdColor,
+                                           cfg.showYiMo, gaokaoDate, yimoDate, nullptr);
+            m_desktopWidget = card;
+            wireReturnToMain(card);
         }
 
         m_desktopWidget->show();
         hide();
+        Logger::info(QStringLiteral("已切换到桌面小组件模式（样式 %1）").arg(cfg.style + 1));
     } catch (...) {
         Logger::critical(QStringLiteral("创建桌面小组件时发生异常"));
         QMessageBox::warning(this, tr("错误"), tr("无法创建桌面小组件，请查看日志。"));
@@ -548,79 +591,199 @@ QWidget *MainWindow::createAppearancePage()
 {
     QWidget *page = new QWidget;
     QVBoxLayout *layout = new QVBoxLayout(page);
+    layout->setContentsMargins(24, 20, 24, 20);
+    layout->setSpacing(16);
     layout->setAlignment(Qt::AlignTop);
 
     QLabel *title = new QLabel(tr("外观设置"));
-    title->setStyleSheet(QStringLiteral("font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 15px;"));
+    title->setStyleSheet(QStringLiteral("font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 6px;"));
     layout->addWidget(title);
 
-    QGroupBox *widgetSet = new QGroupBox(tr("小组件设置"));
-    widgetSet->setStyleSheet(QLatin1String(kGroupBoxStyle));
-    QVBoxLayout *widgetSetLayout = new QVBoxLayout(widgetSet);
-    QHBoxLayout *contentSetLayout = new QHBoxLayout;
-    QHBoxLayout *backgroundSetLayout = new QHBoxLayout;
+    // ===== 分组一：小组件样式（分类管理：先选样式，再调该样式相关项）=====
+    QGroupBox *styleGroup = new QGroupBox(tr("小组件样式"));
+    styleGroup->setStyleSheet(QLatin1String(kGroupBoxStyle));
+    QVBoxLayout *styleLayout = new QVBoxLayout(styleGroup);
+    styleLayout->setSpacing(8);
 
-    // 显示内容选择
-    QLabel *showContentLabel = new QLabel(tr("请选择显示内容："));
+    QHBoxLayout *styleRow = new QHBoxLayout;
+    QLabel *styleLabel = new QLabel(tr("请选择小组件样式："));
+    QComboBox *styleChoice = new QComboBox;
+    styleChoice->addItem(tr("样式 1 · 圆角卡片（带按钮）"));
+    styleChoice->addItem(tr("样式 2 · 右下角透明区域（无标题栏）"));
+    styleChoice->setStyleSheet(QLatin1String(kComboStyle));
+
+    const WidgetConfig cfgNow = WidgetConfig::load(configPath);
+    styleChoice->setCurrentIndex(cfgNow.style == WidgetConfig::Style2 ? 1 : 0);
+
+    QLabel *styleHint = new QLabel;
+    styleHint->setWordWrap(true);
+    styleHint->setStyleSheet(QStringLiteral("color: #7f8c8d; font-size: 12px;"));
+
+    styleRow->addWidget(styleLabel);
+    styleRow->addWidget(styleChoice, 1);
+    styleLayout->addLayout(styleRow);
+    styleLayout->addWidget(styleHint);
+    layout->addWidget(styleGroup);
+
+    // ===== 分组二：显示内容 =====
+    QGroupBox *contentGroup = new QGroupBox(tr("显示内容"));
+    contentGroup->setStyleSheet(QLatin1String(kGroupBoxStyle));
+    QVBoxLayout *contentLayout = new QVBoxLayout(contentGroup);
+
+    QHBoxLayout *contentRow = new QHBoxLayout;
+    QLabel *showContentLabel = new QLabel(tr("倒计时目标："));
     QComboBox *showChoice = new QComboBox;
     showChoice->addItem(tr("高考"));
     showChoice->addItem(tr("一模"));
     showChoice->setStyleSheet(QLatin1String(kComboStyle));
+    showChoice->setCurrentIndex(cfgNow.showYiMo ? 1 : 0);
+    contentRow->addWidget(showContentLabel);
+    contentRow->addWidget(showChoice, 1);
+    contentLayout->addLayout(contentRow);
+    layout->addWidget(contentGroup);
 
-    int savedContent = 0;
-    withSettings(configPath, [&](QSettings &s) {
-        savedContent = s.value(QStringLiteral("Widget/showcontent"), 0).toInt();
+    // ===== 分组三：颜色设置（文字 / LCD 两种样式通用；背景色仅样式 1）=====
+    QGroupBox *colorGroup = new QGroupBox(tr("颜色设置"));
+    colorGroup->setStyleSheet(QLatin1String(kGroupBoxStyle));
+    QGridLayout *colorLayout = new QGridLayout(colorGroup);
+    colorLayout->setHorizontalSpacing(14);
+    colorLayout->setVerticalSpacing(10);
+
+    auto makeColorButton = [](const QString &objectName) {
+        QPushButton *btn = new QPushButton;
+        btn->setObjectName(objectName);
+        btn->setMinimumWidth(150);
+        btn->setCursor(Qt::PointingHandCursor);
+        return btn;
+    };
+
+    QLabel *textColorLabel = new QLabel(tr("小组件文字颜色："));
+    QPushButton *textColorBtn = makeColorButton(QStringLiteral("textColorBtn"));
+    QLabel *lcdColorLabel = new QLabel(tr("LCD 数字颜色："));
+    QPushButton *lcdColorBtn = makeColorButton(QStringLiteral("lcdColorBtn"));
+    QLabel *bgColorLabel = new QLabel(tr("小组件背景色："));
+    m_bgColorBtn = makeColorButton(QStringLiteral("backgroundColorBtn"));
+
+    // 统一颜色按钮样式（含禁用态），并让当前颜色以按钮底色呈现
+    const QString colorBtnStyle = QStringLiteral(
+        "QPushButton#%1 {"
+        "   background-color: %2;"
+        "   color: %3;"
+        "   border: 1px solid #cccccc;"
+        "   padding: 5px;"
+        "   border-radius: 3px;"
+        "}"
+        "QPushButton#%1:disabled {"
+        "   background-color: #f0f0f0;"
+        "   color: #a0a0a0;"
+        "   border: 1px dashed #cccccc;"
+        "}");
+
+    auto paintColorButton = [&](QPushButton *btn, const QColor &c, const QString &label) {
+        if (!btn)
+            return;
+        btn->setProperty("currentColor", c);
+        btn->setText(QStringLiteral("%1: %2").arg(label, c.name()));
+        btn->setStyleSheet(colorBtnStyle.arg(btn->objectName(), c.name(),
+                                             c.lightness() > 128 ? QStringLiteral("black")
+                                                                 : QStringLiteral("white")));
+    };
+
+    paintColorButton(textColorBtn, cfgNow.textColor, tr("文字"));
+    paintColorButton(lcdColorBtn,  cfgNow.lcdColor,  tr("数字"));
+    paintColorButton(m_bgColorBtn, cfgNow.bgColor,   tr("背景"));
+
+    colorLayout->addWidget(textColorLabel, 0, 0);
+    colorLayout->addWidget(textColorBtn,   0, 1);
+    colorLayout->addWidget(lcdColorLabel,  1, 0);
+    colorLayout->addWidget(lcdColorBtn,    1, 1);
+    colorLayout->addWidget(bgColorLabel,   2, 0);
+    colorLayout->addWidget(m_bgColorBtn,   2, 1);
+    colorLayout->setColumnStretch(2, 1);
+    layout->addWidget(colorGroup);
+
+    // ---- “选择背景色”在样式 2 下自动禁用（操作显示逻辑）----
+    applyStyleDependentEnabled(styleChoice->currentIndex());
+
+    // ================= 信号槽：所有修改即时写入配置并同步到运行中的小组件 =================
+
+    /// 取当前界面完整配置 -> 应用回调修改 -> 保存
+    auto saveCurrentConfig = [&](const std::function<void(WidgetConfig &)> &mutate) {
+        WidgetConfig cfg = WidgetConfig::load(configPath);
+        mutate(cfg);
+        cfg.save(configPath);
+    };
+
+    /// 若小组件正在运行，则按最新配置重建（保证“所见即所得”）
+    auto refreshLiveWidget = [this]() {
+        const bool wasWidgetMode = m_desktopWidget && m_desktopWidget->isVisible();
+        if (wasWidgetMode)
+            on_pushButton_clicked(); // 内部会销毁旧实例并按新配置重建
+    };
+
+    connect(styleChoice, &QComboBox::currentIndexChanged, this, [=](int index) {
+        applyStyleDependentEnabled(index);
+        saveCurrentConfig([index](WidgetConfig &cfg) {
+            cfg.style = (index == 1) ? WidgetConfig::Style2 : WidgetConfig::Style1;
+        });
+        styleHint->setText(index == 1
+                               ? tr("样式 2 使用屏幕右下角的无边框透明区域（Qt Quick 实现，兼容 Linux 碎片化桌面），"
+                                    "没有标题栏与背景色，双击可返回主界面。")
+                               : tr("样式 1 为现有圆角卡片小组件，包含退出/返回按钮，支持自定义背景色。"));
+        Logger::info(QStringLiteral("小组件样式切换为样式 %1").arg(index + 1));
+        refreshLiveWidget();
     });
-    showChoice->setCurrentIndex(qBound(0, savedContent, 1));
+    // 初始提示文案（与样式切换回调保持一致）
+    styleHint->setText(styleChoice->currentIndex() == 1
+                           ? tr("样式 2 使用屏幕右下角的无边框透明区域（Qt Quick 实现，兼容 Linux 碎片化桌面），"
+                                "没有标题栏与背景色，双击可返回主界面。")
+                           : tr("样式 1 为现有圆角卡片小组件，包含退出/返回按钮，支持自定义背景色。"));
 
     connect(showChoice, &QComboBox::currentIndexChanged, this, [=](int index) {
-        withSettings(configPath, [&](QSettings &s) {
-            s.setValue(QStringLiteral("Widget/showcontent"), index);
-            s.sync();
-        });
+        saveCurrentConfig([index](WidgetConfig &cfg) { cfg.showYiMo = (index == 1); });
         Logger::info(QStringLiteral("小组件显示内容更新: %1").arg(index == 1 ? tr("一模") : tr("高考")));
+        refreshLiveWidget();
     });
 
-    // 背景色设置
-    QLabel *bgColorLabel = new QLabel(tr("设置小组件背景色："));
-    QPushButton *bgColorBtn = new QPushButton(tr("选择颜色"));
-    bgColorBtn->setObjectName(QStringLiteral("backgroundColorBtn"));
-
-    QColor initialColor(255, 0, 0);
-    withSettings(configPath, [&](QSettings &s) {
-        initialColor = s.value(QStringLiteral("Widget/BackGrandColor"), initialColor).value<QColor>();
-    });
-    updateButtonColor(bgColorBtn, initialColor);
-
-    connect(bgColorBtn, &QPushButton::clicked, this, [this, bgColorBtn]() {
+    auto openColorDialog = [=](QPushButton *btn, WidgetConfig::*member, const QString &label) {
+        if (!btn)
+            return;
         try {
-            const QColor color = QColorDialog::getColor(
-                bgColorBtn->property("currentColor").value<QColor>(),
-                this, tr("请选择颜色"));
+            QColor initial = btn->property("currentColor").value<QColor>();
+            const QColor color = QColorDialog::getColor(initial, this, tr("请选择%1").arg(label));
             if (!color.isValid())
                 return; // 用户取消
-            updateButtonColor(bgColorBtn, color);
-            withSettings(configPath, [&](QSettings &s) {
-                s.setValue(QStringLiteral("Widget/BackGrandColor"), color);
-                s.sync();
-            });
-            Logger::info(QStringLiteral("小组件背景色更新为 %1").arg(color.name()));
+            paintColorButton(btn, color, label);
+            saveCurrentConfig([color, member](WidgetConfig &cfg) { cfg.*member = color; });
+            Logger::info(QStringLiteral("小组件%1颜色更新为 %2").arg(label, color.name()));
+            refreshLiveWidget();
         } catch (...) {
-            Logger::critical(QStringLiteral("更改小组件背景色失败"));
+            Logger::critical(QStringLiteral("更改小组件%1颜色失败").arg(label));
         }
-    });
+    };
 
-    contentSetLayout->addWidget(showContentLabel);
-    contentSetLayout->addWidget(showChoice);
-    backgroundSetLayout->addWidget(bgColorLabel);
-    backgroundSetLayout->addWidget(bgColorBtn);
-    widgetSetLayout->addSpacing(10);
-    widgetSetLayout->addLayout(contentSetLayout);
-    widgetSetLayout->addLayout(backgroundSetLayout);
-    layout->addWidget(widgetSet);
+    connect(textColorBtn, &QPushButton::clicked, this,
+            [=]() { openColorDialog(textColorBtn, &WidgetConfig::textColor, tr("文字")); });
+    connect(lcdColorBtn, &QPushButton::clicked, this,
+            [=]() { openColorDialog(lcdColorBtn, &WidgetConfig::lcdColor, tr("数字")); });
+    connect(m_bgColorBtn, &QPushButton::clicked, this,
+            [=]() { openColorDialog(m_bgColorBtn, &WidgetConfig::bgColor, tr("背景")); });
+
     layout->addStretch(1);
-
     return page;
+}
+
+void MainWindow::applyStyleDependentEnabled(int style)
+{
+    // 样式 2（透明覆盖层）没有背景色概念：自动禁用“选择背景色”，
+    // 并把标签置灰提示原因，避免用户误以为功能失效。
+    const bool bgEnabled = (style != 1);
+    if (m_bgColorBtn) {
+        m_bgColorBtn->setEnabled(bgEnabled);
+        m_bgColorBtn->setToolTip(bgEnabled
+                                     ? QString()
+                                     : tr("样式 2 为透明背景小组件，不支持设置背景色"));
+    }
 }
 
 void MainWindow::updateButtonColor(QPushButton *button, const QColor &color)
