@@ -2,13 +2,15 @@
 #include "logger.h"
 
 #include <QQuickWidget>
-#include <QQmlComponent>
+#include <QQuickItem>
 #include <QQmlContext>
 #include <QQmlEngine>
 #include <QApplication>
 #include <QScreen>
 #include <QMouseEvent>
 #include <QUrl>
+#include <QDir>
+#include <QFile>
 
 namespace {
 
@@ -164,11 +166,21 @@ OverlayWidget::OverlayWidget(const QColor &textColor,
     setWindowFlags(Qt::FramelessWindowHint | Qt::Tool | Qt::WindowStaysOnTopHint);
     // 原生 RGBA 表面：Qt Quick 场景直接渲染到带 Alpha 的窗口缓冲，
     // 在 Windows(DWM)/Wayland/有合成器的 X11 上均为真透明（不会变黑）。
+    // Qt5 的 QSurfaceFormat 提供 setAlpha(int)；Qt6 已移除该 API，
+    // 改用 alphaBufferSize()（>=0 即请求带 Alpha 的表面）。用版本宏隔离。
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+    if (QSurfaceFormat::defaultFormat().alphaBufferSize() <= 0) {
+        QSurfaceFormat fmt = QSurfaceFormat::defaultFormat();
+        fmt.setAlphaBufferSize(8);
+        QSurfaceFormat::setDefaultFormat(fmt);
+    }
+#else
     if (!QSurfaceFormat::defaultFormat().hasAlpha()) {
         QSurfaceFormat fmt = QSurfaceFormat::defaultFormat();
         fmt.setAlpha(8);
         QSurfaceFormat::setDefaultFormat(fmt);
     }
+#endif
     setAttribute(Qt::WA_TranslucentBackground);
     setFixedSize(260, 180);
     setCursor(Qt::SizeAllCursor); // 提示整体可拖动（与样式 1 一致）
@@ -180,10 +192,32 @@ OverlayWidget::OverlayWidget(const QColor &textColor,
     // 关键修复：Quick 视口背景色必须是透明色。
     // 默认 QQuickWidget 背景为 palette Base（深色主题/部分 Linux 后端下即黑色），
     // 这正是 "QSS transparent 变黑" 的常见根因之一。
+    // QQuickWidget::setColor() 需要 Qt 6.5+；更早版本用调色板 Base 达到同样效果。
+#if QT_VERSION >= QT_VERSION_CHECK(6, 5, 0)
     m_quick->setColor(Qt::transparent);
+#else
+    {
+        QPalette pal = m_quick->palette();
+        pal.setColor(QPalette::Window, Qt::transparent);
+        pal.setColor(QPalette::Base, Qt::transparent);
+        m_quick->setPalette(pal);
+    }
+#endif
     m_quick->setStyleSheet(QStringLiteral("_q_qwindowsystemproxy { background: transparent; }"));
 
-    // 数据经上下文属性注入（一次性创建，无需运行时反复 rebind）
+    // 内嵌 QML 写入系统临时文件后通过 setSource 加载：
+    // 这是 Qt5/Qt6 通用的公开 API（避免依赖受 dlopen 可见性限制的 contentItem()）。
+    m_qmlPath = QDir::temp().filePath(QStringLiteral("battleforfuture_overlay_style2.qml"));
+    {
+        QFile f(m_qmlPath);
+        if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+            Logger::critical(QStringLiteral("样式2: 无法写入临时 QML 文件 %1").arg(m_qmlPath));
+        } else {
+            f.write(kOverlayQml);
+        }
+    }
+    m_quick->engine()->addImportPath(QCoreApplication::applicationDirPath());
+    // 数据注入必须在 setSource 之前完成（上下文属性在创建组件时读取）
     m_context = new QQmlContext(m_quick->rootContext(), m_quick);
     m_context->setContextProperty(QStringLiteral("overlayTextColor"), textColor);
     m_context->setContextProperty(QStringLiteral("overlayLcdColor"),  lcdColor);
@@ -191,13 +225,7 @@ OverlayWidget::OverlayWidget(const QColor &textColor,
                                   remainingDays(showYiMo ? yimoDate : gaokaoDate));
     m_context->setContextProperty(QStringLiteral("overlayUnit"),
                                   showYiMo ? tr("天到一模") : tr("天到高考"));
-
-    m_component = new QQmlComponent(m_quick->engine(), m_quick);
-    connect(m_component, &QQmlComponent::statusChanged,
-            this, &OverlayWidget::onQmlStatusChanged);
-    m_component->setData(QByteArray(kOverlayQml), QUrl(QStringLiteral("overlay-style2.qml")));
-    if (m_component->isReady())
-        createOverlayObject(); // 同步编译成功时立即创建
+    m_quick->setSource(QUrl::fromLocalFile(m_qmlPath));
 
     // 初始位置：屏幕右下角（保持原有习惯，之后可用鼠标拖到任意位置）
     if (QScreen *screen = QApplication::primaryScreen()) {
@@ -206,37 +234,6 @@ OverlayWidget::OverlayWidget(const QColor &textColor,
     }
 
     Logger::info(QStringLiteral("桌面小组件（样式2·Qt Quick 透明覆盖层）已创建"));
-}
-
-void OverlayWidget::onQmlStatusChanged()
-{
-    if (m_component->isError()) {
-        Logger::critical(QStringLiteral("样式2 QML 加载失败: %1").arg(m_component->errorString()));
-        return;
-    }
-    if (m_component->isReady())
-        createOverlayObject();
-}
-
-void OverlayWidget::createOverlayObject()
-{
-    if (m_quick->contentItem()->childItems().size() > 0)
-        return; // 防重复创建
-
-    QObject *obj = m_component->create(m_context);
-    if (!obj) {
-        Logger::critical(QStringLiteral("样式2 QML 对象创建失败: %1").arg(m_component->errorString()));
-        return;
-    }
-    auto *item = qobject_cast<QQuickItem *>(obj);
-    if (!item) {
-        Logger::critical(QStringLiteral("样式2 QML 根对象不是 QQuickItem"));
-        obj->deleteLater();
-        return;
-    }
-
-    item->setParentItem(m_quick->contentItem());
-    connect(item, SIGNAL(returnToMain()), this, SIGNAL(returnToMainRequested()));
 }
 
 int OverlayWidget::remainingDays(const QDate &targetDate)

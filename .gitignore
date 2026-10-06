@@ -1,1 +1,11 @@
-(empty)
+# Build directories and artifacts
+build_linux/
+
+# Compiled object files
+*.o
+
+# Qt build artifacts
+.qmake.stash
+moc_*.cpp
+ui_*.h
+qrc_*.cpp

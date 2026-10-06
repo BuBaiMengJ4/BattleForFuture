@@ -30,6 +30,9 @@ struct WidgetConfig
     /// 保存到 ini（立即 sync）
     void save(const QString &configPath) const;
 
+    /// 按 ini 键名设置对应颜色字段（BackGrandColor/TextColor/LcdColor）
+    void setColorByKey(const QString &key, const QColor &color);
+
     /// 解析 "r,g,b" / "#rrggbb" 形式的颜色字符串
     static QColor parseColor(const QString &value, const QColor &fallback);
     /// 序列化为 "r,g,b"

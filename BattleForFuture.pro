@@ -1,4 +1,4 @@
-QT       += core gui
+QT       += core gui quick qml quickwidgets
 
 greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 
@@ -20,11 +20,15 @@ SOURCES += \
     main.cpp \
     mainwindow.cpp \
     desktopwidget.cpp \
+    overlaywidget.cpp \
+    widgetstyle.cpp \
     logger.cpp
 
 HEADERS += \
     mainwindow.h \
     desktopwidget.h \
+    overlaywidget.h \
+    widgetstyle.h \
     logger.h
 
 FORMS += \
