@@ -20,6 +20,16 @@ void withSettingsSafe(const QString &path, Fn &&fn) noexcept
 
 } // namespace
 
+void WidgetConfig::setColorByKey(const QString &key, const QColor &color)
+{
+    if (key == QLatin1String("BackGrandColor"))
+        bgColor = color;
+    else if (key == QLatin1String("TextColor"))
+        textColor = color;
+    else if (key == QLatin1String("LcdColor"))
+        lcdColor = color;
+}
+
 QColor WidgetConfig::parseColor(const QString &value, const QColor &fallback)
 {
     if (value.isEmpty())

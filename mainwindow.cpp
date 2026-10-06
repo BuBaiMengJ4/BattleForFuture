@@ -1,3 +1,4 @@
+#include <functional>
 #include "mainwindow.h"
 #include "desktopwidget.h"
 #include "overlaywidget.h"
@@ -266,7 +267,7 @@ void MainWindow::destroyDesktopWidget()
     QWidget *w = m_desktopWidget;
     m_desktopWidget = nullptr; // 先置空，避免 destroyed 回调再次进入
     w->close();
-    deleteLater(w);
+    w->deleteLater();
 }
 
 void MainWindow::on_pushButton_clicked()
@@ -276,16 +277,6 @@ void MainWindow::on_pushButton_clicked()
 
         // 销毁旧实例（可能样式已被用户切换）
         destroyDesktopWidget();
-
-        auto wireReturnToMain = [this](QObject *widgetObj) {
-            connect(widgetObj, &DesktopWidget::returnToMainRequested, this, [this]() {
-                destroyDesktopWidget();
-                show();
-                raise();
-                activateWindow();
-                updateCountdowns(); // 返回主界面时刷新倒计时
-            });
-        };
 
         if (cfg.style == WidgetConfig::Style2) {
             // 样式 2：Qt Quick 透明覆盖层（右下角、无标题栏、背景自动禁用）
@@ -304,7 +295,13 @@ void MainWindow::on_pushButton_clicked()
             auto *card = new DesktopWidget(cfg.bgColor, cfg.textColor, cfg.lcdColor,
                                            cfg.showYiMo, gaokaoDate, yimoDate, nullptr);
             m_desktopWidget = card;
-            wireReturnToMain(card);
+            connect(card, &DesktopWidget::returnToMainRequested, this, [this]() {
+                destroyDesktopWidget();
+                show();
+                raise();
+                activateWindow();
+                updateCountdowns(); // 返回主界面时刷新倒计时
+            });
         }
 
         m_desktopWidget->show();
@@ -745,16 +742,23 @@ QWidget *MainWindow::createAppearancePage()
         refreshLiveWidget();
     });
 
-    auto openColorDialog = [=](QPushButton *btn, WidgetConfig::*member, const QString &label) {
+    // key: config.ini 中的字段名（由 setColorByKey 统一映射到结构体成员），
+    // 避免成员指针模板在 MinGW/MSVC 上推导差异导致的编译错误。
+    auto openColorDialog = [&, this](QPushButton *btn,
+                                  const char *key,
+                                  const QString &label) {
         if (!btn)
             return;
         try {
-            QColor initial = btn->property("currentColor").value<QColor>();
+            const QColor initial = btn->property("currentColor").value<QColor>();
             const QColor color = QColorDialog::getColor(initial, this, tr("请选择%1").arg(label));
             if (!color.isValid())
                 return; // 用户取消
             paintColorButton(btn, color, label);
-            saveCurrentConfig([color, member](WidgetConfig &cfg) { cfg.*member = color; });
+            const QByteArray keyBa(key);
+            saveCurrentConfig([color, keyBa](WidgetConfig &cfg) {
+                cfg.setColorByKey(QString::fromLatin1(keyBa), color);
+            });
             Logger::info(QStringLiteral("小组件%1颜色更新为 %2").arg(label, color.name()));
             refreshLiveWidget();
         } catch (...) {
@@ -763,11 +767,17 @@ QWidget *MainWindow::createAppearancePage()
     };
 
     connect(textColorBtn, &QPushButton::clicked, this,
-            [=]() { openColorDialog(textColorBtn, &WidgetConfig::textColor, tr("文字")); });
+            [openColorDialog, textColorBtn, this]() {
+                openColorDialog(textColorBtn, "TextColor", tr("文字"));
+            });
     connect(lcdColorBtn, &QPushButton::clicked, this,
-            [=]() { openColorDialog(lcdColorBtn, &WidgetConfig::lcdColor, tr("数字")); });
+            [openColorDialog, lcdColorBtn, this]() {
+                openColorDialog(lcdColorBtn, "LcdColor", tr("数字"));
+            });
     connect(m_bgColorBtn, &QPushButton::clicked, this,
-            [=]() { openColorDialog(m_bgColorBtn, &WidgetConfig::bgColor, tr("背景")); });
+            [openColorDialog, this]() {
+                openColorDialog(m_bgColorBtn, "BackGrandColor", tr("背景"));
+            });
 
     layout->addStretch(1);
     return page;

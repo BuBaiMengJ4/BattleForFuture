@@ -36,8 +36,14 @@ DesktopWidget::DesktopWidget(const QColor &backgroundColor,
     // 此时回退为“不透明背景 + setMask 圆角遮罩”，保证任何环境下都不出现黑块。
 #if defined(Q_OS_LINUX)
     {
+        // 注意：QScreen::hasAlphaChannel() 仅存在于 Qt5；Qt6 已移除该 API
+        // （ARGB 视觉由平台合成器统一保证）。用版本宏隔离，避免编译错误。
+#if QT_VERSION >= QT_VERSION_CHECK(6, 0, 0)
+        const bool rgbaVisual = true;   // Qt6: 现代桌面默认支持逐像素透明
+#else
         const bool rgbaVisual = QApplication::primaryScreen()
                                 && QApplication::primaryScreen()->hasAlphaChannel();
+#endif
         m_alphaOk = rgbaVisual; // Wayland 表面天然支持 alpha；X11 取决于合成器视觉
         if (!m_alphaOk) {
             Logger::warning(QStringLiteral("当前 Linux 会话不支持逐像素 Alpha（无合成器？），"

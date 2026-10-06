@@ -6,7 +6,7 @@
 #include <QWidget>
 
 class QQuickWidget;
-class QQmlComponent;
+
 class QQmlContext;
 
 /**
@@ -46,19 +46,21 @@ protected:
     void mouseMoveEvent(QMouseEvent *event) override;
     void mouseReleaseEvent(QMouseEvent *event) override;
 
-private slots:
-    void onQmlStatusChanged();
+
+
 
 private:
     static int remainingDays(const QDate &targetDate);
-    void createOverlayObject();
+
 
     QPoint m_dragPos;               // 按下时鼠标全局位置与窗口左上角的偏移
     bool   m_dragging = false;
 
     QQuickWidget *m_quick = nullptr;
-    QQmlComponent *m_component = nullptr;
+
+
     QQmlContext  *m_context = nullptr;
+    QString m_qmlPath;   // 内嵌 QML 的临时文件路径
 };
 
 #endif // OVERLAYWIDGET_H
