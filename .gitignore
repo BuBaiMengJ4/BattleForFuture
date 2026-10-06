@@ -1,0 +1,36 @@
+# Compiled/Binary files
+*.o
+*.obj
+*.exe
+*.dll
+*.so
+*.a
+*.out
+
+# Build artifacts and directories
+build/
+.qmake.stash
+moc_*.cpp
+moc_*.h
+ui_*.h
+qrc_*.cpp
+Makefile
+
+# Python dependencies (wheel files)
+*.whl
+
+# Logs
+*.log
+
+# System/Environment files
+.DS_Store
+Thumbs.db
+.env
+.env.local
+*.env.*
+
+# Editor/IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
