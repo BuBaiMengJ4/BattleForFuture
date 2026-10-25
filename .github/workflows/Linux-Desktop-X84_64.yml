@@ -9,6 +9,8 @@ on:
 env:
   APP_NAME: YourApp
   QT_VERSION: '6.10.3'
+  # 消除 actions/checkout@v4、upload-artifact@v4 的 Node.js 20 弃用警告
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
   build-linux:
@@ -18,7 +20,6 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # ---------- 1. 安装 Qt 6.10.3 (Linux GCC 64-bit) ----------
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
@@ -28,7 +29,6 @@ jobs:
           arch: linux_gcc_64
           cache: true
 
-      # ---------- 2. 安装构建与打包工具 ----------
       - name: Install build and packaging tools
         run: |
           sudo apt-get update
@@ -36,11 +36,22 @@ jobs:
             build-essential \
             libgl1-mesa-dev \
             libfuse2 \
+            patchelf \
+            zstd \
             rpm \
-            libarchive-tools
-          sudo gem install fpm -v 1.15.1
+            libarchive-tools \
+            ruby \
+            ruby-dev
+          sudo gem install fpm -v 1.15.1 --no-document
 
-      # ---------- 3. qmake + make 构建 ----------
+      - name: Set version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=dev-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          fi
+
       - name: Build with qmake
         run: |
           mkdir -p build
@@ -48,52 +59,41 @@ jobs:
           qmake CONFIG+=release PREFIX=/usr ../YourProject.pro
           make -j"$(nproc)"
 
-      # ---------- 4. 准备统一的 AppDir ----------
       - name: Prepare AppDir
         run: |
           APP_DIR="$PWD/AppDir"
           mkdir -p "$APP_DIR/usr/bin"
           cp build/YourApp "$APP_DIR/usr/bin/"
 
-          # 如果仓库中有 desktop / 图标，复制进去；
-          # 如果 linuxdeploy 能自动生成，也可以跳过
+          mkdir -p "$APP_DIR/usr/share/applications"
           if [ -f resources/yourapp.desktop ]; then
-            mkdir -p "$APP_DIR/usr/share/applications"
             cp resources/yourapp.desktop "$APP_DIR/usr/share/applications/"
+          else
+            cat > "$APP_DIR/usr/share/applications/yourapp.desktop" <<'EOF'
+          [Desktop Entry]
+          Type=Application
+          Name=YourApp
+          Exec=YourApp
+          Icon=application-x-executable
+          Categories=Utility;
+          Terminal=false
+          EOF
           fi
+
           if [ -f resources/yourapp.png ]; then
             mkdir -p "$APP_DIR/usr/share/icons/hicolor/256x256/apps"
             cp resources/yourapp.png "$APP_DIR/usr/share/icons/hicolor/256x256/apps/"
           fi
 
-      # ---------- 5. AppImage ----------
-      - name: Build AppImage
-        run: |
-          export APPIMAGE_EXTRACT_AND_RUN=1
-          export QMAKE="$(which qmake)"
-
-          wget -q -O linuxdeploy.AppImage \
-            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
-          wget -q -O linuxdeploy-plugin-qt.AppImage \
-            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
-          chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage
-
-          ./linuxdeploy.AppImage \
-            --appdir AppDir \
-            --plugin qt \
-            --output appimage
-
-          # 产物名通常为 YourApp-x86_64.AppImage，统一加上版本号
-          VERSION="${GITHUB_REF_NAME#v}"
-          mv YourApp*.AppImage "YourApp-${VERSION}-linux-x86_64.AppImage"
-
-      # ---------- 6. deb + rpm (复用 AppDir) ----------
+      # 先打 deb/rpm，保证 AppDir 里没有 AppImage 专用文件
       - name: Build deb and rpm with fpm
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          FPM_WORKDIR="${{ runner.temp }}/fpm-workdir"
+          mkdir -p "$FPM_WORKDIR"
 
           for target in deb rpm; do
             fpm -s dir -t "$target" \
+              --workdir "$FPM_WORKDIR" \
               -a x86_64 \
               -n yourapp \
               -v "$VERSION" \
@@ -105,7 +105,28 @@ jobs:
               AppDir/=/
           done
 
-      # ---------- 7. Arch Linux 原生包 (容器中 makepkg) ----------
+      - name: Build AppImage
+        run: |
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          export QMAKE="$(which qmake)"
+          export NO_STRIP=true
+
+          wget -q -O linuxdeploy.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q -O linuxdeploy-plugin-qt.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+
+          chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage
+          # linuxdeploy --plugin qt 查找的是不带 .AppImage 后缀的可执行文件
+          ln -sf linuxdeploy-plugin-qt.AppImage linuxdeploy-plugin-qt
+
+          ./linuxdeploy.AppImage \
+            --appdir AppDir \
+            --plugin qt \
+            --output appimage
+
+          mv YourApp*.AppImage "YourApp-${VERSION}-linux-x86_64.AppImage"
+
       - name: Build Arch Linux package
         run: |
           docker run --rm \
@@ -119,11 +140,10 @@ jobs:
               chown -R builder:builder /src
               su builder -c "
                 cd /src
-                makepkg -s --noconfirm --skipchecksums
+                makepkg --noconfirm --skipchecksums
               "
             '
 
-      # ---------- 8. 统一上传四类产物 ----------
       - name: Upload Linux artifacts
         uses: actions/upload-artifact@v4
         with:
