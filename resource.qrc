@@ -11,5 +11,8 @@
         <file>Widget.png</file>
         <file>home-background.png</file>
         <file>checkmark.svg</file>
+        <file>checkbox-unchecked.svg</file>
+        <file>checkbox-unchecked-hover.svg</file>
+        <file>checkbox-unchecked-disabled.svg</file>
     </qresource>
 </RCC>

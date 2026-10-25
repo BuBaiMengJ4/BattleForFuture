@@ -74,6 +74,13 @@ private:
      * 不会因为重复调用而变成两句不同的话。
      */
     void refreshQuoteLabel();
+    /**
+     * @brief 通过系统通知推送当前鼓励语句（应用启动时调用）
+     *
+     * 推送内容与首页显示的是**同一条**语句；具体投递方式由 Notifier 决定
+     * （托盘气泡优先，Linux 无托盘时退化为 notify-send）。
+     */
+    void pushStartupNotification();
     /// 为首页设置一个自带渐变背景的调色板
     void applyHomeBackground();
 

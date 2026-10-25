@@ -19,14 +19,6 @@
 
 namespace {
 
-/// 数码管上“熄灭”的段：用数字颜色的低透明度绘制，形成淡淡的底纹
-QColor segmentOffColor(const QColor &lcdColor)
-{
-    QColor off = lcdColor;
-    off.setAlpha(38);
-    return off;
-}
-
 /// 描边颜色：亮字配深色描边、暗字配浅色描边，保证压在任意壁纸上都能读
 QColor outlineColorFor(const QColor &textColor)
 {
@@ -192,13 +184,14 @@ void OverlayWidget::renderContent(QPainter &painter) const
     // ---- LCD 七段数码管数字 ----
     const int thickness = qMax(3, dSize.height() / 10);
     const int radius    = thickness / 2;
-    const QColor offColor = segmentOffColor(m_lcdColor);
 
     int x = left + prefixWidth + gap;
     const int y0 = (height() - dSize.height()) / 2;
     const qreal w = dSize.width();
     const qreal h = dSize.height();
     const qreal armLen = (h - 3.0 * thickness) / 2.0; // 纵向段长度
+    // 下排竖段从“中间横段的下沿”开始，才能与最下面的横段 d 正好接上
+    const qreal lowerArmY = y0 + 2.0 * thickness + armLen;
 
     painter.setPen(Qt::NoPen);
     for (const QChar ch : m_daysText) {
@@ -215,13 +208,15 @@ void OverlayWidget::renderContent(QPainter &painter) const
             { "d", QRectF(x + thickness,     y0 + h - thickness,          w - 2.0 * thickness, thickness) },
             { "f", QRectF(x,                 y0 + thickness,              thickness, armLen) },
             { "b", QRectF(x + w - thickness, y0 + thickness,              thickness, armLen) },
-            { "e", QRectF(x,                 y0 + thickness + armLen,     thickness, armLen) },
-            { "c", QRectF(x + w - thickness, y0 + thickness + armLen,     thickness, armLen) }
+            { "e", QRectF(x,                 lowerArmY,                   thickness, armLen) },
+            { "c", QRectF(x + w - thickness, lowerArmY,                   thickness, armLen) }
         };
 
+        // 只绘制点亮的段：未点亮的段若也画一层淡色，会在数字上留下“8”的残影
         for (const Segment &seg : segments) {
-            const bool lit = pattern.contains(QLatin1String(seg.name));
-            painter.setBrush(lit ? m_lcdColor : offColor);
+            if (!pattern.contains(QLatin1String(seg.name)))
+                continue;
+            painter.setBrush(m_lcdColor);
             painter.drawRoundedRect(seg.rect, radius, radius);
         }
         x += dSize.width();

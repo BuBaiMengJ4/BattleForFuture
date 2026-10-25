@@ -1,0 +1,5 @@
+<svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg">
+  <!-- 未勾选 + 悬停：淡蓝底 + 蓝色边框 -->
+  <rect x="0.75" y="0.75" width="18.5" height="18.5" rx="5" ry="5"
+        fill="#f0f7ff" stroke="#0078d7" stroke-width="1.5"/>
+</svg>

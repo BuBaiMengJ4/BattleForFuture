@@ -12,6 +12,6 @@
  * 注意：修改版本号时请同时更新 BattleForFuture.pro 里的 VERSION
  * （那里决定 Windows 可执行文件属性里的版本资源）。
  */
-#define APP_VERSION "2.3.5"
+#define APP_VERSION "2.3.6"
 
 #endif // APP_VERSION_H

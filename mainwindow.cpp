@@ -3,6 +3,7 @@
 #include "desktopwidget.h"
 #include "iconutils.h"
 #include "logger.h"
+#include "notifier.h"
 #include "overlaywidget.h"
 #include "settingsdialog.h"
 #include "sevensegmentdisplay.h"
@@ -140,6 +141,22 @@ MainWindow::MainWindow(QWidget *parent)
     m_countdownTimer->setInterval(60 * 1000);
     connect(m_countdownTimer, &QTimer::timeout, this, &MainWindow::refreshCountdowns);
     m_countdownTimer->start();
+
+    // ===== 托盘图标（推送通知时才会真正创建）的回调 =====
+    connect(&Notifier::instance(), &Notifier::showRequested, this, &MainWindow::bringToFront);
+    connect(&Notifier::instance(), &Notifier::quitRequested, this, []() {
+        QCoreApplication::quit();
+    });
+
+    // ===== 启动推送 =====
+    // 说明：首页的鼓励语句与这个开关无关（首页始终显示一条），
+    // 本开关只决定“启动时是否再通过系统通知推送一次”。
+    // 延迟一会儿再发，等窗口和托盘都就绪，避免通知被后续初始化打断。
+    if (readNoticeEnabled()) {
+        QTimer::singleShot(900, this, [this]() { pushStartupNotification(); });
+    } else {
+        Logger::info(QStringLiteral("启动推送鼓励语句已关闭，本次不发送系统通知"));
+    }
 }
 
 MainWindow::~MainWindow()
@@ -262,27 +279,47 @@ bool MainWindow::readNoticeEnabled() const
 
 void MainWindow::refreshQuoteLabel()
 {
-    if (!readNoticeEnabled()) {
-        m_pushedQuote.clear();
-        ui->label_5->setText(QString());
-        Logger::debug(QStringLiteral("鼓励语句推送已关闭，首页不显示语句"));
-        return;
-    }
-
-    // 关键：只有在没有“当前语句”时才随机抽取。
-    // 这样同一条语句既作为启动推送内容、也作为首页显示内容，
-    // 不会出现“推送的和首页显示的不是同一句”。
+    // 首页始终显示一条鼓励语句，与“启动时是否推送系统通知”无关：
+    // 那个开关只控制通知，不该让首页变成空白。
+    // 只有在没有“当前语句”时才随机抽取，保证首页与通知推送的是同一句。
     if (m_pushedQuote.isEmpty())
         m_pushedQuote = randomQuote();
 
     if (m_pushedQuote.isEmpty()) {
         ui->label_5->setText(tr("请在设置中添加鼓励语"));
-        Logger::warning(QStringLiteral("鼓励语句为空，无法推送（请检查 quotes.txt）"));
+        Logger::warning(QStringLiteral("鼓励语句为空（请检查 quotes.txt）"));
         return;
     }
 
     ui->label_5->setText(m_pushedQuote);
-    Logger::info(QStringLiteral("首页推送语句: %1").arg(m_pushedQuote));
+    Logger::debug(QStringLiteral("首页显示语句: %1").arg(m_pushedQuote));
+}
+
+void MainWindow::pushStartupNotification()
+{
+    if (m_pushedQuote.isEmpty()) {
+        Logger::warning(QStringLiteral("没有可推送的鼓励语句，跳过启动通知"));
+        return;
+    }
+
+    // 标题带上倒计时目标与天数，让通知本身也有信息量；
+    // 正文与首页显示的语句完全相同。
+    bool showYiMo = false;
+    withSettings(configPath, [&](QSettings &s) {
+        showYiMo = s.value(QStringLiteral("Widget/showcontent"), 0).toInt() == 1;
+    });
+    const QDate target = (showYiMo && yimoDate.isValid()) ? yimoDate : gaokaoDate;
+    const int days = calculateRemainingDays(target);
+
+    const QString title = showYiMo
+                              ? tr("距离一模还有 %1 天").arg(days)
+                              : tr("距离高考还有 %1 天").arg(days);
+
+    const bool ok = Notifier::instance().notify(title, m_pushedQuote);
+    if (ok)
+        Logger::info(QStringLiteral("启动推送成功: %1 / %2").arg(title, m_pushedQuote));
+    else
+        Logger::warning(QStringLiteral("启动推送失败：当前环境不支持系统通知"));
 }
 
 // ============================= 桌面小组件 =============================

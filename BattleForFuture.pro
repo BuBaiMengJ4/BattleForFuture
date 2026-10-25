@@ -7,7 +7,7 @@ greaterThan(QT_MAJOR_VERSION, 4): QT += widgets
 # qmake 生成的 Makefile 不把 -D 宏的变化记为依赖，只改这里的 VERSION 时
 # 已编译过的文件不会重新编译，会出现“版本号改了但界面还显示旧版本”。
 # 这里的 VERSION 仍然保留，用于 Windows 可执行文件属性里的版本资源。
-VERSION = 2.3.5
+VERSION = 2.3.6
 RC_ICONS = WindowIcon.ico
 QMAKE_TARGET_COMPANY = "Explorer"
 QMAKE_TARGET_DESCRIPTION = "Gaokao countdown widget for students"
@@ -40,6 +40,7 @@ SOURCES += \
     iconutils.cpp \
     platformsupport.cpp \
     restarthelper.cpp \
+    notifier.cpp \
     logger.cpp
 
 HEADERS += \
@@ -55,6 +56,7 @@ HEADERS += \
     textutils.h \
     version.h \
     restarthelper.h \
+    notifier.h \
     widgetstyle.h \
     iconutils.h \
     platformsupport.h \

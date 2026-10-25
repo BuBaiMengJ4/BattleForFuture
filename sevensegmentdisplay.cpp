@@ -32,9 +32,6 @@ const char *const kPatterns[10] = {
     "abcdfg"   // 9
 };
 
-/// 熄灭段的不透明度：有一点底纹更像真实数码管，但不会喧宾夺主
-constexpr int kOffSegmentAlpha = 34;
-
 } // namespace
 
 const char *SevenSegmentDisplay::segmentPattern(int digit)
@@ -196,13 +193,8 @@ void SevenSegmentDisplay::paintEvent(QPaintEvent *event)
     // 段厚度：与数字高度成比例，并保证至少 2px，避免小尺寸下段消失
     const int thickness = qMax(2, int(std::lround(digitH * 0.115)));
     const qreal radius = thickness / 2.0;
-    const qreal armLen = (digitH - 3.0 * thickness) / 2.0;   // 纵向段长度
-
-    QColor offColor = m_offColor;
-    if (!offColor.isValid()) {
-        offColor = m_digitColor;
-        offColor.setAlpha(kOffSegmentAlpha);
-    }
+    // 纵向段长度：把高度三等分后，每段占一格
+    const qreal armLen = (digitH - 3.0 * thickness) / 2.0;
 
     painter.setPen(Qt::NoPen);
 
@@ -211,30 +203,41 @@ void SevenSegmentDisplay::paintEvent(QPaintEvent *event)
         const qreal x = startX + i * (digitW + gap);
         const qreal y = startY;
 
-        // 补位空格不画任何东西。
-        // 旧实现把空格也当成“没有点亮的数字”，于是把 7 段全部用熄灭色画了一遍 ——
-        // 在位数不足时（例如一模已过、只显示“0”）左侧两位是空格，
-        // 就会各留下一个完整的暗色“8”轮廓。跳过空格即可消除这种残影，
-        // 效果与一直满位显示的高考倒计时保持一致。
+        // 补位空格不画任何东西（位数不足时左侧补的空格不应留下残影）
         if (!ch.isDigit())
             continue;
         const QString pattern = QString::fromLatin1(segmentPattern(ch.digitValue()));
 
-        // 段几何：横向 a/g/d，纵向 f/b、e/c
+        // ================= 段几何 =================
+        // 一个数字由 3 条横段（a 上 / g 中 / d 下）与 4 条竖段（f b 上排，e c 下排）组成。
+        //
+        // 修正记录：旧实现把下排竖段 e/c 从 `thickness + armLen` 开始，
+        // 也就是从“中间横段的上沿”开始，导致下排竖段在中间横段处多出一截、
+        // 又提前 1 个段厚结束，于是最下面的横段 d 看起来和主体数字错开了一截。
+        // 正确做法是：下排竖段从“中间横段的下沿”开始，即
+        //     y + 2 * thickness + armLen   （= (H + t) / 2）
+        // 这样上排竖段贴在 a 下面、下排竖段贴在 g 下面并正好接上 d。
+        // =========================================
+        const qreal lowerArmY = y + 2.0 * thickness + armLen;
+
         struct Segment { char name; QRectF rect; };
         const Segment segments[7] = {
-            { 'a', QRectF(x + thickness,              y,                                  digitW - 2.0 * thickness, thickness) },
-            { 'g', QRectF(x + thickness,              y + (digitH - thickness) / 2.0,      digitW - 2.0 * thickness, thickness) },
-            { 'd', QRectF(x + thickness,              y + digitH - thickness,              digitW - 2.0 * thickness, thickness) },
-            { 'f', QRectF(x,                          y + thickness,                      thickness, armLen) },
-            { 'b', QRectF(x + digitW - thickness,     y + thickness,                      thickness, armLen) },
-            { 'e', QRectF(x,                          y + thickness + armLen,             thickness, armLen) },
-            { 'c', QRectF(x + digitW - thickness,     y + thickness + armLen,             thickness, armLen) }
+            { 'a', QRectF(x + thickness,          y,                              digitW - 2.0 * thickness, thickness) },
+            { 'g', QRectF(x + thickness,          y + (digitH - thickness) / 2.0, digitW - 2.0 * thickness, thickness) },
+            { 'd', QRectF(x + thickness,          y + digitH - thickness,         digitW - 2.0 * thickness, thickness) },
+            { 'f', QRectF(x,                      y + thickness,                  thickness, armLen) },
+            { 'b', QRectF(x + digitW - thickness, y + thickness,                  thickness, armLen) },
+            { 'e', QRectF(x,                      lowerArmY,                      thickness, armLen) },
+            { 'c', QRectF(x + digitW - thickness, lowerArmY,                      thickness, armLen) }
         };
 
+        // 只画点亮的段。
+        // 旧实现会给未点亮的段涂一层低透明度颜色（原本是想模拟真实数码管的底纹），
+        // 结果每个数字都隐约显出一个“8”，也就是用户看到的“本不该有颜色的一条边”。
         for (const Segment &seg : segments) {
-            const bool lit = pattern.contains(QLatin1Char(seg.name));
-            painter.setBrush(lit ? m_digitColor : offColor);
+            if (!pattern.contains(QLatin1Char(seg.name)))
+                continue;
+            painter.setBrush(m_digitColor);
             painter.drawRoundedRect(seg.rect, radius, radius);
         }
     }

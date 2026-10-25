@@ -2,6 +2,7 @@
 
 #include "diagnostics.h"
 #include "logger.h"
+#include "notifier.h"
 #include "restarthelper.h"
 #include "slidingnavlist.h"
 #include "version.h"
@@ -103,27 +104,37 @@ const char *const kGroupBoxStyle =
     "   padding: 0 6px;"
     "}";
 
+/**
+ * @brief 复选框样式
+ *
+ * 指示器**完全由图片绘制**（未勾选 / 悬停 / 禁用 / 勾选各一张），
+ * 不再使用 QSS 的 background-color + border 组合。
+ *
+ * 原因：用 QSS 画圆角边框时，Qt 会先填充背景再描边，而控件为指示器分配的
+ * 裁剪区域往往只等于 width/height（不含 border 宽度），于是边框有一部分
+ * 被裁掉/被背景盖住 —— 表现就是“框的四周没有被 border 完整包围”。
+ * 交给图片后，整块 20×20 都是图片内容，任何缩放与裁剪下边框都完整闭合。
+ */
 const char *const kCheckBoxStyle =
     "QCheckBox { spacing: 10px; color: #24292f; font-size: 14px; background: transparent; }"
     "QCheckBox::indicator {"
     "   width: 20px; height: 20px;"
-    "   border-radius: 5px;"
-    "   border: 1.5px solid #cccccc;"
-    "   background-color: white;"
+    "   image: url(:/icon/checkbox-unchecked.svg);"
     "}"
-    "QCheckBox::indicator:hover { border-color: #0078d7; background-color: #f0f7ff; }"
-    // 勾选态使用 checkmark.svg：该 SVG 自带蓝色圆角底 + 白色对勾，
-    // 因此这里把边框也一起交给图片，避免出现“方框里再套一个圆角矩形”的双层边框。
+    "QCheckBox::indicator:hover {"
+    "   image: url(:/icon/checkbox-unchecked-hover.svg);"
+    "}"
+    // 勾选态使用 checkmark.svg：该 SVG 自带蓝色圆角底 + 白色对勾
     "QCheckBox::indicator:checked {"
-    "   border: none;"
-    "   background-color: transparent;"
     "   image: url(:/icon/checkmark.svg);"
     "}"
-    "QCheckBox::indicator:checked:hover { border: none; background-color: transparent; }"
-    "QCheckBox::indicator:disabled { border: 1.5px solid #eeeeee; background-color: #f9f9f9; }"
+    "QCheckBox::indicator:checked:hover {"
+    "   image: url(:/icon/checkmark.svg);"
+    "}"
+    "QCheckBox::indicator:disabled {"
+    "   image: url(:/icon/checkbox-unchecked-disabled.svg);"
+    "}"
     "QCheckBox::indicator:checked:disabled {"
-    "   border: none;"
-    "   background-color: transparent;"
     "   image: url(:/icon/checkmark.svg);"
     "}"
     "QCheckBox:disabled { color: #a0a0a0; }";
@@ -1017,10 +1028,12 @@ QWidget *SettingsDialog::createWordEditPage()
     }
     outer->addWidget(m_quotesEdit, 1);
 
-    m_noticeCheck = new QCheckBox(tr("启动时在首页推送一条鼓励语句"));
+    m_noticeCheck = new QCheckBox(tr("应用程序启动时推送鼓励语句（系统通知）"));
     m_noticeCheck->setStyleSheet(QLatin1String(kCheckBoxStyle));
-    m_noticeCheck->setToolTip(tr("勾选后，程序启动时会在首页底部推送一条鼓励语句；\n"
-                                 "推送的语句与首页显示的为同一条。"));
+    m_noticeCheck->setToolTip(tr("勾选后，程序每次启动都会通过**系统通知**推送一条鼓励语句；\n"
+                                 "推送内容与首页显示的为同一条。\n"
+                                 "Windows / macOS / 常见 Linux 桌面使用系统托盘气泡，\n"
+                                 "无托盘的 Linux 环境会退化为 notify-send。"));
     // 与 MainWindow::readNoticeEnabled() 保持完全一致的解析规则，
     // 否则配置写成 1/yes/on 时会出现“复选框没勾但实际在推送”的矛盾状态。
     auto parseBool = [](const QString &raw, bool fallback) {
@@ -1038,8 +1051,21 @@ QWidget *SettingsDialog::createWordEditPage()
     connect(m_noticeCheck, &QCheckBox::toggled, this, [this](bool checked) {
         writeValue(QStringLiteral("Global/Notice"), checked);
         Logger::info(QStringLiteral("启动推送鼓励语句: %1").arg(checked ? tr("开") : tr("关")));
-        // 立即让主界面生效，不必等下次启动
-        emit quotesChanged();
+
+        if (!checked)
+            return;
+
+        // 勾选时立刻发一条预览通知：
+        // 用户可以马上确认“系统通知确实能弹出来”，不必等到下次启动才验证。
+        if (Notifier::instance().isAvailable()) {
+            Notifier::instance().notify(tr("已开启启动推送"),
+                                        tr("今后每次启动都会推送一条鼓励语句"));
+        } else {
+            QMessageBox::information(
+                this, tr("提示"),
+                tr("当前桌面环境没有可用的系统通知服务，\n"
+                   "该选项会被保存，但启动时可能看不到通知。"));
+        }
     });
     outer->addWidget(m_noticeCheck);
 
