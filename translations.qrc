@@ -1,0 +1,15 @@
+<RCC>
+    <!--
+        Qt 官方中文翻译（简体）。
+        单独放一个 .qrc 的原因：resource.qrc 里含有 2.9MB 的 home-background.png，
+        而 rcc 默认会对每个 .qrc 统一做 zstd 压缩；只要有一行改动（例如版本号），
+        整个资源就要重新压缩一遍，大图会明显拖慢重建。
+        把翻译拆出来后，这类小改动只影响本文件的编译。
+
+        用途：QColorDialog / QMessageBox 这类标准对话框的按钮与标签需要它才会显示中文。
+        注意它只提供**简体**；繁体界面由 TextUtils::toTraditional() 在运行时转换。
+    -->
+    <qresource prefix="/i18n">
+        <file>qt_zh_CN.qm</file>
+    </qresource>
+</RCC>

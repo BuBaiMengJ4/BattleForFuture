@@ -1,13 +1,15 @@
 <RCC>
+    <!--
+        图标与主界面背景。
+        翻译资源放在单独的 translations.qrc 里：本文件包含 2.9MB 的
+        home-background.png，而 rcc 会对每个 .qrc 统一做压缩，
+        拆开可以避免“改个版本号就重新压缩整张大图”这种无谓的耗时。
+    -->
     <qresource prefix="/icon">
         <file>WindowIcon.ico</file>
         <file>Settings.png</file>
+        <file>Widget.png</file>
+        <file>home-background.png</file>
         <file>checkmark.svg</file>
-    </qresource>
-    <qresource prefix="/BackGrand">
-        <file>BackGrand.png</file>
-    </qresource>
-    <qresource prefix="/Translation">
-        <file>BattleForFuture_zh_HK.qm</file>
     </qresource>
 </RCC>

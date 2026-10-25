@@ -32,7 +32,7 @@
   <property name="styleSheet">
    <string notr="true">#centralwidget
 {
-	border-image: url(:/BackGrand/BackGrand.png);
+	border-image: url(:/icon/home-background.png);
 }</string>
   </property>
   <widget class="QWidget" name="centralwidget">
@@ -69,9 +69,12 @@
         <property name="orientation">
          <enum>Qt::Orientation::Horizontal</enum>
         </property>
+        <property name="sizeType">
+         <enum>QSizePolicy::Policy::Expanding</enum>
+        </property>
         <property name="sizeHint" stdset="0">
          <size>
-          <width>40</width>
+          <width>0</width>
           <height>20</height>
          </size>
         </property>
@@ -80,39 +83,34 @@
       <item>
        <widget class="QLabel" name="label">
         <property name="text">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:48pt; font-weight:700; color:#ffffff;&quot;&gt;距离高考还有&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:36pt; font-weight:700; color:#ffffff;&quot;&gt;距离高考还有&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QLCDNumber" name="CountdownGK">
+       <widget class="SevenSegmentDisplay" name="CountdownGK" native="true">
         <property name="minimumSize">
          <size>
-          <width>100</width>
-          <height>100</height>
+          <width>40</width>
+          <height>60</height>
          </size>
         </property>
-        <property name="styleSheet">
-         <string notr="true">color: rgb(255, 0, 0);</string>
+        <property name="digitColor" stdset="0">
+         <color>
+          <red>255</red>
+          <green>60</green>
+          <blue>60</blue>
+         </color>
         </property>
-        <property name="frameShape">
-         <enum>QFrame::Shape::NoFrame</enum>
-        </property>
-        <property name="digitCount">
+        <property name="minimumDigitCount" stdset="0">
          <number>3</number>
-        </property>
-        <property name="segmentStyle">
-         <enum>QLCDNumber::SegmentStyle::Flat</enum>
-        </property>
-        <property name="value" stdset="0">
-         <double>0.000000000000000</double>
         </property>
        </widget>
       </item>
       <item>
        <widget class="QLabel" name="label_3">
         <property name="text">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:48pt; font-weight:700; color:#ffffff;&quot;&gt;天&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:36pt; font-weight:700; color:#ffffff;&quot;&gt;天&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
        </widget>
       </item>
@@ -121,9 +119,12 @@
         <property name="orientation">
          <enum>Qt::Orientation::Horizontal</enum>
         </property>
+        <property name="sizeType">
+         <enum>QSizePolicy::Policy::Expanding</enum>
+        </property>
         <property name="sizeHint" stdset="0">
          <size>
-          <width>40</width>
+          <width>0</width>
           <height>20</height>
          </size>
         </property>
@@ -151,9 +152,12 @@
         <property name="orientation">
          <enum>Qt::Orientation::Horizontal</enum>
         </property>
+        <property name="sizeType">
+         <enum>QSizePolicy::Policy::Expanding</enum>
+        </property>
         <property name="sizeHint" stdset="0">
          <size>
-          <width>40</width>
+          <width>0</width>
           <height>20</height>
          </size>
         </property>
@@ -162,39 +166,34 @@
       <item>
        <widget class="QLabel" name="label_2">
         <property name="text">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:36pt; color:#000000;&quot;&gt;距离一模还有&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:26pt; color:#000000;&quot;&gt;距离一模还有&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
        </widget>
       </item>
       <item>
-       <widget class="QLCDNumber" name="CountdownYM">
+       <widget class="SevenSegmentDisplay" name="CountdownYM" native="true">
         <property name="minimumSize">
          <size>
-          <width>100</width>
-          <height>100</height>
+          <width>40</width>
+          <height>50</height>
          </size>
         </property>
-        <property name="styleSheet">
-         <string notr="true">color: rgb(255, 0, 0);</string>
+        <property name="digitColor" stdset="0">
+         <color>
+          <red>255</red>
+          <green>60</green>
+          <blue>60</blue>
+         </color>
         </property>
-        <property name="frameShape">
-         <enum>QFrame::Shape::NoFrame</enum>
-        </property>
-        <property name="digitCount">
+        <property name="minimumDigitCount" stdset="0">
          <number>3</number>
-        </property>
-        <property name="segmentStyle">
-         <enum>QLCDNumber::SegmentStyle::Flat</enum>
-        </property>
-        <property name="value" stdset="0">
-         <double>0.000000000000000</double>
         </property>
        </widget>
       </item>
       <item>
        <widget class="QLabel" name="label_4">
         <property name="text">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:36pt; color:#000000;&quot;&gt;天&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;&lt;span style=&quot; font-size:26pt; color:#000000;&quot;&gt;天&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
         </property>
        </widget>
       </item>
@@ -203,9 +202,12 @@
         <property name="orientation">
          <enum>Qt::Orientation::Horizontal</enum>
         </property>
+        <property name="sizeType">
+         <enum>QSizePolicy::Policy::Expanding</enum>
+        </property>
         <property name="sizeHint" stdset="0">
          <size>
-          <width>40</width>
+          <width>0</width>
           <height>20</height>
          </size>
         </property>
@@ -256,51 +258,100 @@
      <layout class="QHBoxLayout" name="horizontalLayout_4">
       <item>
        <widget class="QPushButton" name="pushButton">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="minimumSize">
          <size>
-          <width>40</width>
-          <height>30</height>
+          <width>50</width>
+          <height>50</height>
          </size>
         </property>
+        <property name="toolTip">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;切换到桌面小组件&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
         <property name="styleSheet">
-         <string notr="true"> background-color: #3498db; 
-color: white; 
-padding: 5px; 
-border-radius: 3px; </string>
+         <string notr="true">QPushButton {
+    background-color: rgba(255, 255, 255, 40);
+    border: 1px solid rgba(255, 255, 255, 90);
+    border-radius: 25px;
+    padding: 0px;
+}
+QPushButton:hover {
+    background-color: rgba(255, 255, 255, 85);
+}
+QPushButton:pressed {
+    background-color: rgba(255, 255, 255, 130);
+    border: 1px solid transparent;
+}</string>
         </property>
         <property name="text">
-         <string>小部件模式</string>
+         <string/>
+        </property>
+        <property name="icon">
+         <iconset resource="resource.qrc">
+          <normaloff>:/icon/Widget.png</normaloff>:/icon/Widget.png</iconset>
+        </property>
+        <property name="iconSize">
+         <size>
+          <width>36</width>
+          <height>36</height>
+         </size>
         </property>
        </widget>
       </item>
       <item>
-       <spacer name="horizontalSpacer">
+       <spacer name="leftGapSpacer">
         <property name="orientation">
          <enum>Qt::Orientation::Horizontal</enum>
         </property>
+        <property name="sizeType">
+         <enum>QSizePolicy::Policy::Fixed</enum>
+        </property>
         <property name="sizeHint" stdset="0">
          <size>
-          <width>40</width>
+          <width>16</width>
           <height>20</height>
          </size>
         </property>
        </spacer>
       </item>
       <item>
-       <widget class="QLabel" name="label_5">
-        <property name="text">
-         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p align=&quot;center&quot;&gt;&lt;span style=&quot; font-size:12pt; font-weight:700; color:#0055ff;&quot;&gt;TextLabel&lt;/span&gt;&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+       <widget class="ScrollingLabel" name="label_5" native="true">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
+          <horstretch>1</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
+        <property name="minimumSize">
+         <size>
+          <width>120</width>
+          <height>34</height>
+         </size>
+        </property>
+        <property name="toolTip">
+         <string>随机显示的鼓励语句；文字过长时会自动左右滚动</string>
+        </property>
+        <property name="text" stdset="0">
+         <string>TextLabel</string>
         </property>
        </widget>
       </item>
       <item>
-       <spacer name="horizontalSpacer_2">
+       <spacer name="rightGapSpacer">
         <property name="orientation">
          <enum>Qt::Orientation::Horizontal</enum>
         </property>
+        <property name="sizeType">
+         <enum>QSizePolicy::Policy::Fixed</enum>
+        </property>
         <property name="sizeHint" stdset="0">
          <size>
-          <width>40</width>
+          <width>16</width>
           <height>20</height>
          </size>
         </property>
@@ -308,14 +359,35 @@ border-radius: 3px; </string>
       </item>
       <item>
        <widget class="QPushButton" name="Settings">
+        <property name="sizePolicy">
+         <sizepolicy hsizetype="Fixed" vsizetype="Fixed">
+          <horstretch>0</horstretch>
+          <verstretch>0</verstretch>
+         </sizepolicy>
+        </property>
         <property name="minimumSize">
          <size>
-          <width>30</width>
-          <height>30</height>
+          <width>50</width>
+          <height>50</height>
          </size>
         </property>
+        <property name="toolTip">
+         <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;打开设置&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+        </property>
         <property name="styleSheet">
-         <string notr="true">background-color: transparent;</string>
+         <string notr="true">QPushButton {
+    background-color: rgba(255, 255, 255, 40);
+    border: 1px solid rgba(255, 255, 255, 90);
+    border-radius: 25px;
+    padding: 0px;
+}
+QPushButton:hover {
+    background-color: rgba(255, 255, 255, 85);
+}
+QPushButton:pressed {
+    background-color: rgba(255, 255, 255, 130);
+    border: 1px solid transparent;
+}</string>
         </property>
         <property name="text">
          <string/>
@@ -326,8 +398,8 @@ border-radius: 3px; </string>
         </property>
         <property name="iconSize">
          <size>
-          <width>50</width>
-          <height>50</height>
+          <width>42</width>
+          <height>42</height>
          </size>
         </property>
        </widget>
@@ -337,6 +409,18 @@ border-radius: 3px; </string>
    </layout>
   </widget>
  </widget>
+ <customwidgets>
+  <customwidget>
+   <class>SevenSegmentDisplay</class>
+   <extends>QWidget</extends>
+   <header>sevensegmentdisplay.h</header>
+  </customwidget>
+  <customwidget>
+   <class>ScrollingLabel</class>
+   <extends>QWidget</extends>
+   <header>scrollinglabel.h</header>
+  </customwidget>
+ </customwidgets>
  <resources>
   <include location="resource.qrc"/>
  </resources>

@@ -1,853 +1,437 @@
 #include "mainwindow.h"
 
+#include "desktopwidget.h"
+#include "iconutils.h"
+#include "logger.h"
+#include "overlaywidget.h"
+#include "settingsdialog.h"
+#include "sevensegmentdisplay.h"
 #include "ui_mainwindow.h"
+#include "widgetstyle.h"
 
+#include <QCloseEvent>
+#include <QColor>
+#include <QCoreApplication>
+#include <QDateTime>
+#include <QDir>
+#include <QFile>
+#include <QLinearGradient>
+#include <QPainter>
+#include <QPalette>
+#include <QRandomGenerator>
+#include <QScreen>
+#include <QSettings>
+#include <QStandardPaths>
+#include <QStringConverter>
+#include <QTextStream>
+#include <QTimer>
 
-MainWindow::MainWindow(QWidget * parent): QMainWindow(parent), ui(new Ui::MainWindow) {
-    ui -> setupUi(this);
+#include <cmath>
 
-    //读取设置内容，并判断需要呈现的窗口
-    if (QFile::exists(appDir + "//config.ini")) {
-        QSettings * settings = new QSettings(appDir + "//config.ini", QSettings::IniFormat);
-        if (!settings -> value("Start/StartAsWidget").toBool())
-            this -> show();
-        else
-            on_pushButton_clicked();
-        delete settings;
-    } else
-        this -> show();
+namespace {
 
-    ui -> CountdownGK -> display(calculateRemainingDays(QDate(academicyear, 6, 7)));
-    ui -> CountdownYM -> display(calculateRemainingDays(QDate(academicyear, 3, 17)));
+/// 返回可写的资源目录（优先程序目录；不可写时回退到用户配置目录）
+QString resolveAssetsDir(const QString &appDir)
+{
+    QDir dir(appDir);
+    if (dir.exists(QStringLiteral("Assets")) || dir.mkpath(QStringLiteral("Assets")))
+        return dir.absolutePath();
 
-    //从文件中读取鼓励语句(如若后期添加，尽量不超过20字，避免显示不全）
-    QFont font("楷体", 20);
-    ui -> label_5 -> setFont(font);
-
-    QFile file(filePath);
-    if (file.open(QIODevice::ReadOnly)) {
-        QTextStream stream( & file);
-        while (!stream.atEnd()) {
-            quotes << stream.readLine();
-        }
-        file.close();
-    }
-
-    QSettings * settings = new QSettings(appDir + "//config.ini", QSettings::IniFormat);
-    settings -> beginGroup("Global");
-    if (quotes.isEmpty()) {
-        ui -> label_5 -> setText("请在设置中添加鼓励语");
-
-        if (settings -> value("Notice").toBool()) {
-            trayIcon = new QSystemTrayIcon(this);
-            trayIcon -> setIcon(QIcon(":/icon/WindowIcon.ico"));
-            trayIcon -> show();
-            trayIcon -> showMessage("BattleForFuture", "请在设置中添加语录", QSystemTrayIcon::Information, 3000);
-            delete trayIcon;
-        }
-
-    } else {
-        QString text = quotes[QRandomGenerator::global() -> bounded(quotes.size())];
-        ui -> label_5 -> setText(text); //随机生成一条鼓励语句
-
-        if (settings -> value("Notice").toBool()) {
-            trayIcon = new QSystemTrayIcon(this);
-            trayIcon -> setIcon(QIcon(":/icon/WindowIcon.ico"));
-            trayIcon -> show();
-            trayIcon -> showMessage("致奔跑中的你:", QString("%1").arg(text), QSystemTrayIcon::Information, 3000);
-            delete trayIcon;
-        }
-    }
-    delete settings;
-
+    // 程序目录只读（如 Program Files）时使用用户配置目录
+    const QString configDir = QStandardPaths::writableLocation(QStandardPaths::AppConfigLocation);
+    QDir cdir(configDir);
+    cdir.mkpath(QStringLiteral("Assets"));
+    return configDir;
 }
 
-MainWindow::~MainWindow() {
+/// 查找鼓励语句文件：Assets/quotes.txt -> 程序目录 quotes.txt -> 源码目录 quotes.txt
+QString resolveQuotesFile(const QString &appDir)
+{
+    QStringList candidates;
+    candidates << QDir(resolveAssetsDir(appDir)).filePath(QStringLiteral("quotes.txt"));
+    candidates << QDir(appDir).filePath(QStringLiteral("quotes.txt"));
+#ifdef QUOTE_FALLBACK_PATH
+    candidates << QStringLiteral(QUOTE_FALLBACK_PATH);
+#endif
+    for (const QString &candidate : candidates) {
+        if (QFile::exists(candidate))
+            return candidate;
+    }
+    Logger::warning(QStringLiteral("未找到鼓励语句文件，已尝试: %1")
+                        .arg(candidates.join(QStringLiteral(", "))));
+    return candidates.first(); // 返回首选路径（通常可写），便于编辑页新建文件
+}
+
+/// 安全读取 ini 配置（任何异常都不向外传播）
+template <typename Fn>
+void withSettings(const QString &path, Fn &&fn) noexcept
+{
+    try {
+        QSettings settings(path, QSettings::IniFormat);
+        fn(settings);
+    } catch (...) {
+        Logger::critical(QStringLiteral("读写配置文件失败: %1").arg(path));
+    }
+}
+
+} // namespace
+
+// ============================= 构造 / 析构 =============================
+
+MainWindow::MainWindow(QWidget *parent)
+    : QMainWindow(parent)
+    , ui(new Ui::MainWindow)
+{
+    ui->setupUi(this);
+
+    appDir = QCoreApplication::applicationDirPath();
+    configPath = QDir(appDir).filePath(QStringLiteral("config.ini"));
+    quotesFilePath = resolveQuotesFile(appDir);
+
+    applyHomeBackground();
+
+    // 数码管参数必须在代码里显式设置：
+    // .ui 里给自定义控件写的属性是**动态属性**（uic 生成 setProperty），
+    // 不会调用 C++ 的 setMinimumDigitCount()/setDigitColor()，
+    // 于是控件内部仍按默认值工作 —— 最小位数变成 0、颜色也不会生效。
+    // 之前控件被布局拉宽所以看不出问题；改成“宽度跟随数字”后，
+    // 就会按一位数计算宽度，三位数会被压缩，因此这里必须显式设置。
+    for (SevenSegmentDisplay *lcd : { ui->CountdownGK, ui->CountdownYM }) {
+        if (!lcd)
+            continue;
+        lcd->setMinimumDigitCount(3);          // 预留 3 位，数字变化时不抖动
+        lcd->setDigitColor(QColor(255, 60, 60)); // 与界面设计一致的红色
+    }
+
+    // 按钮图标规整：Qt 按“图片几何中心”居中图标，而本项目两张图的内容本身
+    // 就偏在画布一侧（实测 Settings.png 偏上 12.4px、Widget.png 偏左 7.9px），
+    // 所以看起来图标偏向一角。这里裁剪到内容包围盒后重新居中，
+    // 与按钮尺寸、样式表都无关，任何缩放下都真正居中。
+    if (QPushButton *widgetBtn = ui->pushButton) {
+        const QIcon centered = IconUtils::centeredIcon(QStringLiteral(":/icon/Widget.png"), 128);
+        if (!centered.isNull())
+            widgetBtn->setIcon(centered);
+    }
+    if (QPushButton *settingsBtn = ui->Settings) {
+        const QIcon centered = IconUtils::centeredIcon(QStringLiteral(":/icon/Settings.png"), 128);
+        if (!centered.isNull())
+            settingsBtn->setIcon(centered);
+    }
+
+    // 目标日期：高考为该年 6 月 7 日；一模固定为该年 3 月 17 日
+    refreshTargetDates();
+    refreshCountdowns();
+
+    // 随机鼓励语
+    // 字体沿用原来的楷体；颜色必须显式指定：
+    // ScrollingLabel 用 QPainter 自绘文字，默认取调色板 WindowText（Windows 上是纯黑），
+    // 而主界面背景是深色星空图 —— 黑色文字基本看不见，看起来就像“没有推送内容”。
+    QFont quoteFont(QStringLiteral("楷体"), 20);
+    quoteFont.setBold(true);
+    ui->label_5->setFont(quoteFont);
+    // 浅蓝白：既贴合原设计的蓝色标语，也能压在深色背景上清晰可读
+    ui->label_5->setTextColor(QColor(0xE8, 0xF2, 0xFF));
+    loadQuotes();
+    refreshQuoteLabel();
+
+    // 跨零点自动刷新：倒计时是“按天”变化的，用分钟级定时器即可，
+    // 既保证长时间运行不会显示过期数字，又几乎没有开销。
+    m_countdownTimer = new QTimer(this);
+    m_countdownTimer->setInterval(60 * 1000);
+    connect(m_countdownTimer, &QTimer::timeout, this, &MainWindow::refreshCountdowns);
+    m_countdownTimer->start();
+}
+
+MainWindow::~MainWindow()
+{
     delete ui;
+    ui = nullptr;
 }
 
-//计算剩余天数
-int MainWindow::calculateRemainingDays(const QDate & targetDate) {
-    QDate currentDate = QDate::currentDate();
-    int days = currentDate.daysTo(targetDate);
-    return (days > 0) ? days : 0; // 若目标日期已过当天，返回0
+void MainWindow::applyHomeBackground()
+{
+    // 主界面背景由 mainwindow.ui 里的 QSS 负责：
+    //     #centralwidget { border-image: url(:/icon/home-background.png); }
+    //
+    // 这里**不要**再给 centralwidget 设置样式表或调色板背景：
+    // 子控件上的 QSS 会完全接管该控件的背景绘制，任何 `background: transparent`
+    // 之类的覆盖都会把 border-image 顶掉，导致背景时有时无（Linux 上尤其明显）。
+    //
+    // 只做一件事：确认资源真的加载成功，失败时留下明确日志
+    // （旧版本曾引用已删除的 BackGrand.png，运行时只报 pixmap 创建失败，
+    //   界面上表现为“背景无缘无故没了”，很难定位）。
+    const QPixmap probe(QStringLiteral(":/icon/home-background.png"));
+    if (probe.isNull())
+        Logger::warning(QStringLiteral("主界面背景图 :/icon/home-background.png 加载失败，"
+                                       "界面将显示为纯色背景"));
+    else
+        Logger::debug(QStringLiteral("主界面背景图已加载: %1x%2")
+                          .arg(probe.width())
+                          .arg(probe.height()));
 }
 
-void MainWindow::on_Settings_clicked() {
-    SettingWindow -> setWindowTitle(tr("应用设置"));
-    SettingWindow -> resize(600, 400);
-    SettingWindow -> setMinimumSize(600, 400);
+// ============================= 工具函数 =============================
 
-    //删除旧的布局样式，避免重复
-    if (QLayout * oldLayout = SettingWindow -> layout()) {
-        delete oldLayout;
-    }
+int MainWindow::calculateRemainingDays(const QDate &targetDate)
+{
+    if (!targetDate.isValid())
+        return 0;
+    const int days = QDate::currentDate().daysTo(targetDate);
+    return days > 0 ? days : 0; // 若目标日期已过，返回 0
+}
 
-    //设置窗口主布局
-    QHBoxLayout * mainLayout = new QHBoxLayout(SettingWindow);
-    mainLayout -> setSpacing(0);
-    mainLayout -> setContentsMargins(0, 0, 0, 0);
-
-    // 左侧区域（分类列表）
-    QFrame * leftFrame = new QFrame;
-    leftFrame -> setStyleSheet("background-color: #2c3e50; color: white;"); //浅蓝色背景
-    leftFrame -> setMinimumWidth(200);
-    leftFrame -> setMaximumWidth(200);
-    QVBoxLayout * leftLayout = new QVBoxLayout(leftFrame);
-    leftLayout -> setContentsMargins(0, 10, 0, 0); //10像素为标题留空间
-
-    // 右侧区域（设置页面）
-    QVBoxLayout * rightLayout = new QVBoxLayout;
-
-    // 添加分隔线
-    QFrame * divider = new QFrame;
-    divider -> setFrameShape(QFrame::VLine);
-    divider -> setFrameShadow(QFrame::Sunken); // 凹陷阴影效果
-    divider -> setStyleSheet("background-color: #d1d5db;"); // 浅灰色
-
-    //将左右区域和分割线加入主布局
-    mainLayout -> addWidget(leftFrame);
-    mainLayout -> addWidget(divider);
-    mainLayout -> addLayout(rightLayout, 1);
-
-    //加入左侧的导航
-    categoryList = createCategoryList();
-    leftLayout -> addWidget(categoryList);
-
-    //右侧详细内容
-    if (!pagesWidget) {
-        pagesWidget = new QStackedWidget(SettingWindow);
-        pagesWidget -> addWidget(createGeneralPage());
-        pagesWidget -> addWidget(createAppearancePage());
-        pagesWidget -> addWidget(createWordEditPage());
-        pagesWidget -> addWidget(createAboutPage());
-    }
-    rightLayout -> addWidget(pagesWidget);
-
-    pagesWidget -> setCurrentIndex(0);
-    //窗口切换动画（向左向右滑动）
-    QPropertyAnimation * stackAnimation = new QPropertyAnimation(pagesWidget, "pos", this);
-    stackAnimation -> setDuration(300);
-    stackAnimation -> setEasingCurve(QEasingCurve::OutQuad); // 平滑曲线
-    connect(categoryList, & QListWidget::currentRowChanged, [ = ](int index) {
-        //检测索引是否有效
-        if (index < 0 || index >= pagesWidget -> count()) return;
-        QWidget * currentPage = pagesWidget -> currentWidget();
-        QWidget * nextPage = pagesWidget -> widget(index);
-
-        //根据目标索引判断滑动方向（向右滑动为1，向左滑动为-1）
-        int direction = (index > pagesWidget -> currentIndex()) ? 1 : -1;
-        nextPage -> move(direction * pagesWidget -> width(), 0);
-        nextPage -> show();
-
-        QPropertyAnimation * currentAnim = new QPropertyAnimation(currentPage, "pos"); //控制当前页移除
-        QPropertyAnimation * nextAnim = new QPropertyAnimation(nextPage, "pos"); //控制目标页移入
-
-        currentAnim -> setDuration(300);
-        nextAnim -> setDuration(300);
-        //先快后慢的动画效果
-        currentAnim -> setEasingCurve(QEasingCurve::OutQuad);
-        nextAnim -> setEasingCurve(QEasingCurve::OutQuad);
-
-        //设置动画位置
-        currentAnim -> setStartValue(currentPage -> pos());
-        currentAnim -> setEndValue(QPoint(-direction * pagesWidget -> width(), 0));
-
-        nextAnim -> setStartValue(nextPage -> pos());
-        nextAnim -> setEndValue(QPoint(0, 0));
-
-        connect(nextAnim, & QPropertyAnimation::finished, [ = ]() {
-            pagesWidget -> setCurrentIndex(index);
-            currentPage -> move(0, 0); // 重置位置，防止位置状态污染
-        });
-
-        currentAnim -> start();
-        nextAnim -> start();
+int MainWindow::readAcademyYear() const
+{
+    const int currentYear = QDate::currentDate().year();
+    int year = currentYear;
+    withSettings(configPath, [&](QSettings &s) {
+        const QString value = s.value(QStringLiteral("Global/academicyear")).toString();
+        bool ok = false;
+        const int parsed = value.toInt(&ok);
+        if (ok && parsed >= currentYear && parsed <= currentYear + 6)
+            year = parsed;
     });
-
-    SettingWindow -> exec();
+    return year;
 }
 
-
-//创建左侧导航栏
-QListWidget * MainWindow::createCategoryList() {
-    QListWidget * categoryList = new QListWidget;
-    categoryList -> setStyleSheet(
-        "QListWidget {"
-        "   background-color: #2c3e50;"
-        "   border: none;"
-        "   font-size: 14px;"
-        "   outline: none" //去掉虚线焦点轮廓
-        "}"
-        "QListWidget::item {"
-        "   padding: 12px 15px;" //增加点击区域
-        "   border-bottom: 1px solid #34495e;"
-        "}"
-        "QListWidget::item:selected {"
-        "   background-color: #3498db;"
-        "   color: white;"
-        "}"
-        "QListWidget::item:hover:!selected {"
-        "   background-color: #34495e;"
-        "}"
-        );
-
-    // 添加分类项
-    QStringList categories = {
-        tr("常规设置"),
-        tr("外观设置"),
-        tr("文字编辑"),
-        tr("关于")
-    };
-
-    for (const QString & category: categories) {
-        QListWidgetItem * item = new QListWidgetItem(category, categoryList);
-        item -> setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter); //文本左对齐且垂直居中
-    }
-
-    categoryList -> setCurrentRow(0); //显示菜单栏的第一栏被点击，优化视觉体验
-    return categoryList;
+void MainWindow::refreshTargetDates()
+{
+    const int year = readAcademyYear();
+    gaokaoDate = QDate(year, 6, 7);   // 高考通常 6 月 7 日开始
+    yimoDate   = QDate(year, 3, 17);  // 一模日期（沿用原设定）
+    if (!gaokaoDate.isValid() || !yimoDate.isValid())
+        Logger::warning(QStringLiteral("倒计时目标日期非法: year=%1").arg(year));
 }
 
-//设置“常规设置”详细内容
-QWidget * MainWindow::createGeneralPage() {
-    QWidget * page = new QWidget;
-    QVBoxLayout * layout = new QVBoxLayout(page);
-    layout -> setAlignment(Qt::AlignTop);
+void MainWindow::refreshCountdowns()
+{
+    ui->CountdownGK->display(calculateRemainingDays(gaokaoDate));
+    ui->CountdownYM->display(calculateRemainingDays(yimoDate));
+}
 
-    QLabel * title = new QLabel(tr("常规设置"));
-    title -> setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 15px;");
-
-    // 启动选项
-    QGroupBox * startupGroup = new QGroupBox(tr("启动选项"));
-    startupGroup -> setStyleSheet(
-        "QGroupBox {"
-        "   font-weight: bold;"
-        "   border: 2px solid #cccccc;"
-        "   border-radius: 8px;"
-        "   margin-top: 1ex;"
-        "   padding-top: 10px;"
-        "}"
-        "QGroupBox::title {"
-        "   subcontrol-origin: margin;"
-        "   left: 10px;"
-        "   padding: 0 5px 0 5px;"
-        "}"
-        );
-    QVBoxLayout * startupLayout = new QVBoxLayout(startupGroup);
-
-    QCheckBox * autoStart = new QCheckBox(tr("开机自动启动"));
-    QCheckBox * smallAsWidget = new QCheckBox(tr("启动时自动打开到小部件"));
-    startupLayout -> addWidget(autoStart);
-    startupLayout -> addWidget(smallAsWidget);
-
-    autoStart -> setStyleSheet(
-        "QCheckBox {"
-        "    spacing: 10px;"
-        "    color: #202020;"
-        "    font-size: 14px;"
-        "    background: transparent;"
-        "}"
-        "QCheckBox::indicator {"
-        "    width: 14px;"
-        "    height: 14px;"
-        "    border-radius: 5px;"
-        "    border: 1.5px solid #cccccc;"
-        "    background-color: white;"
-        "}"
-        "QCheckBox::indicator:hover {"
-        "    border-color: #0078d7;"
-        "    background-color: #f0f7ff;"
-        "}"
-        "QCheckBox::indicator:checked {"
-        "    border-color: #0078d7;"
-        "    image: url(:/icon/checkmark.svg);"
-        "}"
-        );
-
-    smallAsWidget -> setStyleSheet(
-        "QCheckBox {"
-        "    spacing: 10px;"
-        "    color: #202020;"
-        "    font-size: 14px;"
-        "    background: transparent;"
-        "}"
-        "QCheckBox::indicator {"
-        "    width: 14px;"
-        "    height: 14px;"
-        "    border-radius: 5px;"
-        "    border: 1.5px solid #cccccc;"
-        "    background-color: white;"
-        "}"
-        "QCheckBox::indicator:hover {"
-        "    border-color: #0078d7;"
-        "    background-color: #f0f7ff;"
-        "}"
-        "QCheckBox::indicator:checked {"
-        "    border-color: #0078d7;"
-        "    image: url(:/icon/checkmark.svg);"
-        "}"
-        );
-
-    //读取设置并设置复选框初始状态
-    QSettings * initSettings = new QSettings(appDir + "//config.ini", QSettings::IniFormat);
-    initSettings -> beginGroup("Start");
-    bool startAsWidget = initSettings -> value("StartAsWidget").toBool();
-    smallAsWidget -> setChecked(startAsWidget);
-    initSettings -> endGroup();
-
-    QSettings Startsetting("HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
-    QString appName = QCoreApplication::applicationName();
-    QString appPath = QDir::toNativeSeparators(QCoreApplication::applicationFilePath());
-    bool autostart = Startsetting.contains(appName);
-    autoStart -> setChecked(autostart);
-
-    QHBoxLayout * showlanguageLayout = new QHBoxLayout;
-    QLabel * showlanguage = new QLabel;
-    showlanguage -> setText(tr("显示语言为："));
-    QComboBox * showlanguageCombo = new QComboBox;
-    showlanguageCombo -> addItem("简体中文");
-    showlanguageCombo -> addItem("繁體中文");
-    showlanguageCombo -> setStyleSheet(
-        "QComboBox {"
-        "   padding: 5px;"
-        "   border: 1px solid #dcdcdc;"
-        "   border-radius: 3px;"
-        "   background-color: white;"
-        "}"
-        "QComboBox::drop-down {"
-        "   border: none;"
-        "}"
-        "QComboBox QAbstractItemView {"
-        "padding: 5px;"
-        "border: 1px solid rgb(31, 156, 220);"
-        "border-radius: 3px;"
-        "color: black;"
-        "background-color: white;"
-        "selection-background-color: rgb(90, 90, 90);"
-        "}"
-        );
-    showlanguageLayout -> addWidget(showlanguage);
-    showlanguageLayout -> addWidget(showlanguageCombo);
-
-    QSettings * read = new QSettings(appDir + "\\config.ini", QSettings::IniFormat);
-    read -> beginGroup("Global");
-    showlanguageCombo -> setCurrentIndex(read -> value("language").toInt());
-    read -> endGroup();
-
-    connect(showlanguageCombo, & QComboBox::currentIndexChanged, showlanguageCombo, [ = ](int index) {
-        QSettings * write = new QSettings(appDir + "\\config.ini", QSettings::IniFormat);
-        write -> beginGroup("Global");
-        write -> setValue("language", index);
-        write -> endGroup();
-        write -> sync();
-        delete write;
-
-        QMessageBox::information(SettingWindow, tr("需要重启"), tr("您需要重启此程序才能切换语言！"));
-
-        //程序重启
-        QProcess::startDetached(QApplication::applicationFilePath());
-        qApp -> quit();
-    });
-
-    //设置高考年份，最多从当前年份向后推6年
-    QLabel * showacademicyear = new QLabel;
-    QHBoxLayout * showacademicyearlayout = new QHBoxLayout;
-    QComboBox * academicyear = new QComboBox;
-
-    showacademicyear -> setText("请选择你的参加高考年份：");
-    int year = QDateTime::currentDateTime().date().year();
-    for (int i = year; i <= year + 6; i++) {
-        academicyear -> addItem(QString::number(i));
-    };
-
-    academicyear -> setCurrentIndex(MainWindow::academicyear - year);
-    delete read;
-
-    academicyear -> setStyleSheet(
-        "QComboBox {"
-        "   padding: 5px;"
-        "   border: 1px solid #dcdcdc;"
-        "   border-radius: 3px;"
-        "   background-color: white;"
-        "}"
-        "QComboBox::drop-down {"
-        "   border: none;"
-        "}"
-        "QComboBox QAbstractItemView {"
-        "padding: 5px;"
-        "border: 1px solid rgb(31, 156, 220);"
-        "border-radius: 3px;"
-        "color: black;"
-        "background-color: white;"
-        "selection-background-color: rgb(90, 90, 90);"
-        "}"
-        );
-    showacademicyearlayout -> addWidget(showacademicyear);
-    showacademicyearlayout -> addWidget(academicyear);
-
-
-    //写入高考年份设置
-    connect(academicyear, & QComboBox::currentTextChanged, academicyear, [ = ](QString text) {
-        QSettings * write = new QSettings(appDir + "\\config.ini", QSettings::IniFormat);
-        write -> beginGroup("Global");
-        write -> setValue("academicyear", text);
-        write -> endGroup();
-        delete write;
-    });
-
-    //设置开机自启动
-    connect(autoStart, & QCheckBox::checkStateChanged, pagesWidget, [ = ](int state) {
-        // 防止递归调用
-        if (m_isSettingAutoStart) return;
-
-        //Windows下的开机自启动
-        if (QSysInfo::kernelType() == "winnt") {
-            QSettings settings("HKEY_CURRENT_USER\\SOFTWARE\\Microsoft\\Windows\\CurrentVersion\\Run", QSettings::NativeFormat);
-            if (state == Qt::Checked) {
-                m_isSettingAutoStart = true;
-                QMessageBox::StandardButton reply = QMessageBox::question(pagesWidget, tr("确认"), tr("确定要设置为开机自启动吗？"), QMessageBox::Yes | QMessageBox::No);
-                if (reply == QMessageBox::Yes) {
-                    settings.setValue(appName, appPath);
-                } else {
-                    QMetaObject::invokeMethod(pagesWidget, [ = ] {
-                        autoStart -> setChecked(false);
-                        m_isSettingAutoStart = false;
-                    }, Qt::QueuedConnection);
-                    return;
-                }
-                m_isSettingAutoStart = false;
-            } else {
-                settings.remove(appName);
-            }
+bool MainWindow::loadQuotes()
+{
+    quotes.clear();
+    try {
+        QFile file(quotesFilePath);
+        if (!file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            Logger::warning(QStringLiteral("无法打开鼓励语句文件: %1 (%2)")
+                                .arg(quotesFilePath, file.errorString()));
+            return false;
         }
-
-        //Linux下的开机自启动
-        if (QSysInfo::kernelType() == "linux") {
-            QMessageBox::critical(SettingWindow, tr("暂不支持"), tr("目前程序不支持在Linux平台上的开机自启动，请期待下一个版本！"));
-            QMetaObject::invokeMethod(pagesWidget, [ = ] {
-                autoStart -> setChecked(false);
-                m_isSettingAutoStart = false;
-            }, Qt::QueuedConnection);
-        }
-    });
-
-
-    //写入“开机自动缩小为小部件”配置
-    connect(smallAsWidget, & QCheckBox::checkStateChanged, [ = ](int state) {
-        QSettings * settings = new QSettings(appDir + "//config.ini", QSettings::IniFormat);
-        settings -> beginGroup("Start");
-        if (state == Qt::Checked) {
-            settings -> setValue("StartAsWidget", true);
-        } else {
-            settings -> setValue("StartAsWidget", false);
-        }
-        settings -> endGroup();
-        settings -> sync();
-        delete settings;
-    });
-
-    //写入语言配置
-    connect(showlanguageCombo, & QComboBox::currentIndexChanged, [ = ](int index) {
-        QSettings * settings = new QSettings(appDir + "//config.ini", QSettings::IniFormat);
-        settings -> beginGroup("Global");
-        settings -> setValue("language", index);
-        settings -> endGroup();
-        settings -> sync();
-        delete settings;
-    });
-
-    layout -> addWidget(title);
-    layout -> addLayout(showlanguageLayout);
-    layout -> addLayout(showacademicyearlayout);
-    layout -> addWidget(startupGroup);
-    layout -> addSpacing(3);
-    return page;
-}
-
-//设置“外观设置”选项
-QWidget * MainWindow::createAppearancePage() {
-    QWidget * page = new QWidget;
-    QVBoxLayout * layout = new QVBoxLayout(page);
-    layout -> setAlignment(Qt::AlignTop);
-
-    // 标题标签
-    QLabel * title = new QLabel(tr("外观设置"));
-    title -> setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 15px;");
-    layout -> addWidget(title);
-
-    // 小组件设置组
-    QGroupBox * widgetSet = new QGroupBox(tr("小组件设置"));
-    widgetSet -> setStyleSheet(
-        "QGroupBox {"
-        "   font-weight: bold;"
-        "   border: 2px solid #cccccc;"
-        "   border-radius: 8px;"
-        "   margin-top: 1ex;"
-        "   padding-top: 10px;"
-        "}"
-        "QGroupBox::title {"
-        "   subcontrol-origin: margin;"
-        "   left: 10px;"
-        "   padding: 0 5px 0 5px;"
-        "}"
-        );
-    QVBoxLayout * widgetSetLayout = new QVBoxLayout(widgetSet);
-    QHBoxLayout * contentSetLayout = new QHBoxLayout();
-    QHBoxLayout * backgrandSetLayout = new QHBoxLayout();
-
-    // 显示内容选择
-    QLabel * showContentLabel = new QLabel(tr("请选择显示内容："));
-    QComboBox * showChoice = new QComboBox();
-    showChoice -> addItem(tr("高考"));
-    showChoice -> addItem(tr("一模"));
-    showChoice -> setStyleSheet(
-        "QComboBox {"
-        "   padding: 5px;"
-        "   border: 1px solid #dcdcdc;"
-        "   border-radius: 3px;"
-        "   background-color: white;"
-        "}"
-        "QComboBox::drop-down {"
-        "   border: none;"
-        "}"
-        "QComboBox QAbstractItemView {"
-        "padding: 5px;"
-        "border: 1px solid rgb(31, 156, 220);"
-        "border-radius: 3px;"
-        "color: black;"
-        "background-color: white;"
-        "selection-background-color: rgb(90, 90, 90);"
-        "}"
-        );
-    QSettings * read = new QSettings(appDir + "//config.ini", QSettings::IniFormat);
-    read -> beginGroup("Widget");
-    showChoice -> setCurrentIndex(read -> value("showcontent").toInt());
-    read -> endGroup();
-    delete read;
-
-    connect(showChoice, & QComboBox::currentIndexChanged, pagesWidget, [ = ](int index) {
-        QSettings * write = new QSettings(appDir + "//config.ini", QSettings::IniFormat);
-        write -> beginGroup("Widget");
-        write -> setValue("showcontent", index);
-        write -> endGroup();
-        write -> sync();
-    });
-
-    // 背景色设置
-    QLabel * setBackgroundColorLabel = new QLabel(tr("设置小组件背景色："));
-    QPushButton * backgroundColorBtn = new QPushButton(tr("选择颜色"));
-    backgroundColorBtn -> setObjectName("backgroundColorBtn");
-
-
-    // 添加布局
-    contentSetLayout -> addWidget(showContentLabel);
-    contentSetLayout -> addWidget(showChoice);
-    widgetSetLayout -> addSpacing(10);
-    backgrandSetLayout -> addWidget(setBackgroundColorLabel);
-    backgrandSetLayout -> addWidget(backgroundColorBtn);
-    widgetSetLayout -> addLayout(contentSetLayout);
-    widgetSetLayout -> addLayout(backgrandSetLayout);
-    layout -> addWidget(widgetSet);
-    layout -> addStretch(1);
-
-    // 从设置加载初始颜色
-    QSettings settings(appDir + "//config.ini", QSettings::IniFormat);
-    settings.beginGroup("Widget");
-    QColor initialColor = settings.value("BackGrandColor", QColor(255, 255, 255)).value < QColor > (); //若未读取到，使用默认颜色
-    settings.endGroup();
-
-
-    // 设置初始样式
-    updateButtonColor(backgroundColorBtn, initialColor);
-
-    connect(backgroundColorBtn, & QPushButton::clicked, [this, backgroundColorBtn]() {
-        QColor currentColor = backgroundColorBtn -> palette().button().color();
-        QColor color = QColorDialog::getColor(currentColor, this, tr("请选择颜色"));
-
-        if (color.isValid()) {
-            // 更新按钮颜色显示
-            updateButtonColor(backgroundColorBtn, color);
-
-            // 保存颜色设置
-            QSettings settings(appDir + "//config.ini", QSettings::IniFormat);
-            settings.beginGroup("Widget");
-            settings.setValue("BackGrandColor", color);
-            settings.endGroup();
-        }
-    });
-
-    return page;
-}
-
-// 辅助函数：更新按钮颜色显示
-void MainWindow::updateButtonColor(QPushButton * button,
-                                   const QColor & color) {
-    QString style = QString("QPushButton#backgroundColorBtn { "
-                            "background-color: %1; "
-                            "color: %2; "
-                            "border: 1px solid #cccccc; "
-                            "padding: 5px; "
-                            "border-radius: 3px; }")
-                        .arg(color.name())
-                        .arg(color.lightness() > 128 ? "black" : "white"); //确保了文本在任何背景色上都有良好的可读性
-
-    button -> setStyleSheet(style);
-    button -> setText(QString(tr("当前颜色: %1")).arg(color.name()));
-}
-
-//设置“文字编辑”详细内容
-QWidget * MainWindow::createWordEditPage() {
-    QWidget * page = new QWidget;
-    QVBoxLayout * layout = new QVBoxLayout(page);
-    layout -> setAlignment(Qt::AlignTop);
-
-    QLabel * title = new QLabel(tr("文字编辑"));
-    title -> setStyleSheet("font-size: 18px; font-weight: bold; color: #2c3e50; margin-bottom: 15px;");
-    title -> show();
-
-    //编辑鼓励话语
-    QLabel * EncourageText = new QLabel;
-    EncourageText -> setText(tr("编辑鼓励语句（在首页中出现）"));
-    EncourageText -> setStyleSheet("font-size: 14px; font-weight: bold; color: #2c3e50; margin-bottom: 15px;");
-    QPushButton * save = new QPushButton;
-    save -> setText(tr("保存"));
-    save -> setStyleSheet(
-        "QPushButton {"
-        "   background-color: #aaff7f;"
-        "   color: balck;"
-        "   padding: 8px 16px;"
-        "   border-radius: 4px;"
-        "}"
-        "QPushButton:hover {"
-        "   background-color: #55ff00;"
-        "}"
-        );
-
-    QTextEdit * TextForEncourage = new QTextEdit;
-    TextForEncourage -> setStyleSheet(
-        "QTextEdit{"
-        "   padding: 5px;"
-        "   border: 1px solid #000000;"
-        "   border-radius: 3px;"
-        "   background-color: white;}");
-
-    QFile file(filePath);
-    if (file.open(QIODevice::ReadOnly)) {
-        QTextStream stream( & file);
+        QTextStream stream(&file);
+        stream.setEncoding(QStringConverter::Utf8);
         while (!stream.atEnd()) {
-            TextForEncourage -> setText(stream.readAll());
+            const QString line = stream.readLine().trimmed();
+            if (!line.isEmpty())
+                quotes << line;
         }
         file.close();
+        Logger::info(QStringLiteral("已加载鼓励语句 %1 条").arg(quotes.size()));
+    } catch (...) {
+        Logger::critical(QStringLiteral("读取鼓励语句文件发生异常: %1").arg(quotesFilePath));
+        quotes.clear();
+        return false;
+    }
+    return !quotes.isEmpty();
+}
+
+QString MainWindow::randomQuote() const
+{
+    if (quotes.isEmpty())
+        return QString();
+    const int index = int(QRandomGenerator::global()->bounded(quotes.size()));
+    return quotes.at(index);
+}
+
+bool MainWindow::readNoticeEnabled() const
+{
+    // 兼容多种写法：旧版本可能写成 1/0、true/false、yes/no、on/off。
+    // 只看前缀，避免 "1 " 之类的空白导致误判。
+    bool enabled = true;   // 默认开启（与设置界面的默认勾选一致）
+    withSettings(configPath, [&](QSettings &s) {
+        const QString raw = s.value(QStringLiteral("Global/Notice"), true).toString()
+                                .trimmed().toLower();
+        if (raw.isEmpty())
+            return;
+        enabled = !(raw == QLatin1String("0") || raw == QLatin1String("false")
+                    || raw == QLatin1String("no") || raw == QLatin1String("off"));
+    });
+    return enabled;
+}
+
+void MainWindow::refreshQuoteLabel()
+{
+    if (!readNoticeEnabled()) {
+        m_pushedQuote.clear();
+        ui->label_5->setText(QString());
+        Logger::debug(QStringLiteral("鼓励语句推送已关闭，首页不显示语句"));
+        return;
     }
 
+    // 关键：只有在没有“当前语句”时才随机抽取。
+    // 这样同一条语句既作为启动推送内容、也作为首页显示内容，
+    // 不会出现“推送的和首页显示的不是同一句”。
+    if (m_pushedQuote.isEmpty())
+        m_pushedQuote = randomQuote();
 
-    connect(save, & QPushButton::clicked, [ = ]() {
-        QString Write = TextForEncourage -> toPlainText();
+    if (m_pushedQuote.isEmpty()) {
+        ui->label_5->setText(tr("请在设置中添加鼓励语"));
+        Logger::warning(QStringLiteral("鼓励语句为空，无法推送（请检查 quotes.txt）"));
+        return;
+    }
 
-        QFile file(filePath);
-        if (file.open(QIODevice::WriteOnly | QIODevice::Text)) {
-            QTextStream stream( & file);
-            stream.setEncoding(QStringConverter::Utf8);
-            stream << Write;
-            file.close();
-            QMessageBox::information(pagesWidget, tr("成功"), tr("文件保存成功！"));
-        };
-    });
-
-    QCheckBox * notice = new QCheckBox(tr("启动时推送鼓励语句"));
-    connect(notice, & QCheckBox::checkStateChanged, [ = ](int state) {
-        QSettings * settings = new QSettings(appDir + "//config.ini", QSettings::IniFormat);
-        settings -> beginGroup("Global");
-        if (state == Qt::Checked) {
-            settings -> setValue("Notice", true);
-        } else {
-            settings -> setValue("Notice", false);
-        }
-        settings -> endGroup();
-        settings -> sync();
-        delete settings;
-    });
-
-    QSettings * settings = new QSettings(appDir + "//config.ini", QSettings::IniFormat);
-    settings -> beginGroup("Global");
-    notice -> setChecked(settings -> value("Notice").toBool());
-    settings -> endGroup();
-
-    notice -> setStyleSheet(
-        "QCheckBox {"
-        "    spacing: 10px;"
-        "    color: #202020;"
-        "    font-size: 14px;"
-        "    background: transparent;"
-        "}"
-        "QCheckBox::indicator {"
-        "    width: 14px;"
-        "    height: 14px;"
-        "    border-radius: 5px;"
-        "    border: 1.5px solid #cccccc;"
-        "    background-color: white;"
-        "}"
-        "QCheckBox::indicator:hover {"
-        "    border-color: #0078d7;"
-        "    background-color: #f0f7ff;"
-        "}"
-        "QCheckBox::indicator:checked {"
-        "    border-color: #0078d7;"
-        "    image: url(:/icon/checkmark.svg);"
-        "}"
-        );
-    layout -> addWidget(title);
-    layout -> addWidget(EncourageText);
-    layout -> addWidget(TextForEncourage, 1);
-    layout -> addWidget(notice);
-    layout -> addWidget(save);
-    layout -> addStretch();
-
-    return page;
+    ui->label_5->setText(m_pushedQuote);
+    Logger::info(QStringLiteral("首页推送语句: %1").arg(m_pushedQuote));
 }
 
+// ============================= 桌面小组件 =============================
 
-//设置“关于”详细内容
-QWidget * MainWindow::createAboutPage() {
-    QWidget * page = new QWidget;
-    QVBoxLayout * layout = new QVBoxLayout(page);
-    layout -> setAlignment(Qt::AlignCenter);
-
-    QLabel * title = new QLabel(tr("关于本软件"));
-    title -> setStyleSheet("font-size: 24px; font-weight: bold; color: #3498db;");
-    title -> setAlignment(Qt::AlignCenter);
-
-    QLabel * version = new QLabel(tr("版本: 2.0.0 (Build 2025)"));
-    version -> setAlignment(Qt::AlignCenter);
-
-    QLabel * description = new QLabel(
-        tr("这是一个对于高考考生的倒计时工具\n"
-           "可以激励你为高考奋勇拼搏")
-        );
-    description -> setAlignment(Qt::AlignCenter);
-    description -> setWordWrap(true);
-
-    QPushButton * websiteBtn = new QPushButton(tr("访问Github 项目主页"));
-    websiteBtn -> setStyleSheet(
-        "QPushButton {"
-        "   background-color: #3498db;"
-        "   color: white;"
-        "   padding: 8px 16px;"
-        "   border-radius: 4px;"
-        "}"
-        "QPushButton:hover {"
-        "   background-color: #2980b9;"
-        "}"
-        );
-    websiteBtn -> setCursor(Qt::PointingHandCursor);
-    connect(websiteBtn, & QPushButton::clicked, [ = ]() {
-        QDesktopServices::openUrl(QUrl("https://github.com/BuBaiMengJ4/BattleForFuture"));
-    });
-
-    layout -> addStretch();
-    layout -> addWidget(title);
-    layout -> addSpacing(10);
-    layout -> addWidget(version);
-    layout -> addSpacing(20);
-    layout -> addWidget(description);
-    layout -> addSpacing(20);
-    layout -> addWidget(websiteBtn, 0, Qt::AlignCenter);
-    layout -> addStretch();
-
-    return page;
+bool MainWindow::widgetModeActive() const
+{
+    return m_desktopWidget && m_desktopWidget->isVisible();
 }
 
-void MainWindow::on_pushButton_clicked() {
-    WidgetWindow -> setObjectName("WidgetWindow");
-    WidgetWindow -> setWindowFlags(Qt::FramelessWindowHint | Qt::Tool);
+void MainWindow::destroyDesktopWidget()
+{
+    if (!m_desktopWidget)
+        return;
+    QWidget *widget = m_desktopWidget;
+    m_desktopWidget = nullptr; // 先置空，避免 destroyed 回调再次进入
+    widget->hide();
+    widget->close();
+    widget->deleteLater();
+}
 
-    QScreen * desktop = QApplication::primaryScreen();
-    WidgetWindow -> resize(250, 200);
-    WidgetWindow -> move(desktop -> geometry().width() - WidgetWindow -> width(), 0);
-    //读取用户预设样式
-    QSettings * settings = new QSettings(appDir + "//config.ini", QSettings::IniFormat);
-    settings -> beginGroup("Widget");
-    QColor initialColor = settings -> value("BackGrandColor", QColor(255, 255, 255)).value < QColor > ();
-    bool showcontent = settings -> value("showcontent").toBool();
-    settings -> endGroup();
-    QString style = QString("#WidgetWindow {background-color: %1;border: 1px solid;border-radius: 10px;}").arg(initialColor.name());
-    WidgetWindow -> setStyleSheet(style);
-    WidgetWindow -> show();
+void MainWindow::createDesktopWidget()
+{
+    const WidgetConfig cfg = WidgetConfig::load(configPath);
 
-    QPushButton * Exit = new QPushButton(WidgetWindow);
-    QPushButton * ReturnMain = new QPushButton(WidgetWindow);
-    Exit -> setText(tr("退出"));
-    ReturnMain -> setText(tr("返回主界面"));
-    Exit -> setGeometry(10, 179, 50, 20);
-    ReturnMain -> setGeometry(140, 179, 100, 20);
-    Exit -> show();
-    ReturnMain -> show();
+    // 销毁旧实例（样式或配色可能已被用户改过）
+    destroyDesktopWidget();
 
-    Exit -> setStyleSheet(
-        "QPushButton {"
-        "   background-color: #3498db;"
-        "   color: white;"
-        "   border-radius: 4px;"
-        "}"
-        "QPushButton:hover {"
-        "   background-color: #2980b9;"
-        "}"
-        );
-
-    ReturnMain -> setStyleSheet(
-        "QPushButton {"
-        "   background-color: #3498db;"
-        "   color: white;"
-        "   border-radius: 4px;"
-        "}"
-        "QPushButton:hover {"
-        "   background-color: #2980b9;"
-        "}"
-        );
-
-    connect(Exit, SIGNAL(clicked(bool)), qApp, SLOT(quit()));
-    connect(ReturnMain, SIGNAL(clicked(bool)), this, SLOT(show()));
-    connect(ReturnMain, SIGNAL(clicked(bool)), WidgetWindow, SLOT(hide()));
-
-    QFont temp("宋体", 20);
-    QLCDNumber * LCD = new QLCDNumber(WidgetWindow);
-    QLabel * label_6 = new QLabel(WidgetWindow);
-    QLabel * label_7 = new QLabel(WidgetWindow);
-
-    LCD -> move(30, 30);
-    LCD -> setDigitCount(3);
-    LCD -> setSegmentStyle(QLCDNumber::Flat);
-    LCD -> setFrameShadow(QFrame::Raised);
-    LCD -> resize(200, 100);
-    LCD -> setFrameShape(QFrame::NoFrame);
-    LCD -> setStyleSheet("color: rgb(255, 0, 0);");
-
-    label_7 -> move(70, 140);
-    label_6 -> move(10, 0);
-    label_6 -> setFont(temp);
-    label_7 -> setFont(temp);
-    label_6 -> setText(tr("还有"));
-
-    //根据用户配置更改倒计时显示
-    if (showcontent) {
-        LCD -> display(calculateRemainingDays(QDate(academicyear, 3, 17)));
-        label_7 -> setText(tr("天到一模"));
+    if (cfg.style == WidgetConfig::Style2) {
+        // 样式 2：屏幕右下角、无标题栏、完全透明的倒计时区域
+        auto *overlay = new OverlayWidget(cfg.textColor, cfg.lcdColor, cfg.showYiMo,
+                                          gaokaoDate, yimoDate, cfg.fontSize,
+                                          cfg.alwaysOnTop, nullptr);
+        connect(overlay, &OverlayWidget::returnToMainRequested, this, &MainWindow::returnToMainWindow);
+        m_desktopWidget = overlay;
     } else {
-        LCD -> display(calculateRemainingDays(QDate(academicyear, 6, 7)));
-        label_7 -> setText(tr("天到高考"));
+        // 样式 1：圆角卡片小组件
+        // 传入 configPath 以启用“位置记忆”：拖动结束后写回配置，
+        // 下次创建时恢复上次位置，没有记录则回到屏幕右上角。
+        auto *card = new DesktopWidget(cfg.bgColor, cfg.textColor, cfg.lcdColor, cfg.showYiMo,
+                                       gaokaoDate, yimoDate, cfg.fontSize,
+                                       cfg.alwaysOnTop, configPath, nullptr);
+        connect(card, &DesktopWidget::returnToMainRequested, this, &MainWindow::returnToMainWindow);
+        m_desktopWidget = card;
+    }
+}
+
+void MainWindow::enterWidgetMode()
+{
+    try {
+        createDesktopWidget();
+        if (!m_desktopWidget)
+            return;
+        m_desktopWidget->show();
+        m_desktopWidget->raise();
+        hide();
+        const WidgetConfig cfg = WidgetConfig::load(configPath);
+        Logger::info(QStringLiteral("已切换到桌面小组件模式（样式 %1）").arg(cfg.style + 1));
+    } catch (const std::exception &e) {
+        Logger::critical(QStringLiteral("创建桌面小组件时发生异常: %1").arg(QString::fromUtf8(e.what())));
+        destroyDesktopWidget();
+        show();
+    } catch (...) {
+        Logger::critical(QStringLiteral("创建桌面小组件时发生未知异常"));
+        destroyDesktopWidget();
+        show();
+    }
+}
+
+void MainWindow::returnToMainWindow()
+{
+    destroyDesktopWidget();
+    show();
+    refreshCountdowns();
+    bringToFront();
+}
+
+void MainWindow::bringToFront()
+{
+    // 关键：被其它实例唤醒、或从小组件返回时，都要真正把窗口抬到前台。
+    // 仅 show() 在部分 Windows 场景下仍会被其它启动项窗口压在下面。
+    QWidget *target = widgetModeActive() ? m_desktopWidget : static_cast<QWidget *>(this);
+    if (!target)
+        return;
+    if (target->isMinimized())
+        target->setWindowState(target->windowState() & ~Qt::WindowMinimized);
+    target->show();
+    target->raise();
+    target->activateWindow();
+    Logger::debug(QStringLiteral("已把窗口带到前台（小组件模式=%1）")
+                      .arg(widgetModeActive() ? QStringLiteral("是") : QStringLiteral("否")));
+}
+
+// ============================= 槽函数 =============================
+
+void MainWindow::on_Settings_clicked()
+{
+    if (!m_settings) {
+        m_settings = new SettingsDialog(configPath, quotesFilePath, this);
+
+        // 小组件配置变化：重建正在运行的小组件，保证“所见即所得”
+        connect(m_settings, &SettingsDialog::widgetConfigChanged, this, [this](const WidgetConfig &) {
+            if (widgetModeActive()) {
+                createDesktopWidget();
+                if (m_desktopWidget) {
+                    m_desktopWidget->show();
+                    m_desktopWidget->raise();
+                }
+            }
+        });
+        // 高考年份变化：刷新目标日期、首页倒计时与小组件
+        connect(m_settings, &SettingsDialog::targetYearChanged, this, [this](int) {
+            refreshTargetDates();
+            refreshCountdowns();
+            if (widgetModeActive()) {
+                createDesktopWidget();
+                if (m_desktopWidget) {
+                    m_desktopWidget->show();
+                    m_desktopWidget->raise();
+                }
+            }
+        });
+        // 鼓励语句保存：重新载入并刷新首页显示。
+        // 这里清空“当前语句”是有意为之：旧语句可能已被用户删掉，
+        // 清空后会重新随机抽取一条，保证首页显示的语句始终存在于文件中。
+        connect(m_settings, &SettingsDialog::quotesChanged, this, [this]() {
+            loadQuotes();
+            m_pushedQuote.clear();
+            refreshQuoteLabel();
+        });
     }
 
-    LCD -> show();
-    label_6 -> show();
-    label_7 -> show();
+    m_settings->show();
+    m_settings->raise();
+    m_settings->activateWindow();
+}
 
-    //设置窗口阴影效果
-    QGraphicsDropShadowEffect * shadow = new QGraphicsDropShadowEffect(WidgetWindow);
-    shadow -> setBlurRadius(30);
-    shadow -> setColor(Qt::gray);
-    shadow -> setOffset(0, 0);
-    WidgetWindow -> setGraphicsEffect(shadow);
+void MainWindow::on_pushButton_clicked()
+{
+    enterWidgetMode();
+}
 
-    this -> hide();
+void MainWindow::closeEvent(QCloseEvent *event)
+{
+    // 关闭主界面即代表用户想退出程序：此时把小组件一并关掉，
+    // 避免留下“没有任何可见窗口”的后台僵尸实例
+    // （这正是 Windows 上再次启动看不到窗口的根源之一）。
+    if (m_desktopWidget) {
+        Logger::info(QStringLiteral("主界面关闭，同时结束桌面小组件"));
+        destroyDesktopWidget();
+    }
+    QMainWindow::closeEvent(event);
 }

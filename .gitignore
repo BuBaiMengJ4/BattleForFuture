@@ -1,0 +1,13 @@
+# Build directories and artifacts
+build/
+Assets/
+.qtcreator/
+
+# Compiled object files
+*.o
+
+# Qt build artifacts
+.qmake.stash
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
