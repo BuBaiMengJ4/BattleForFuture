@@ -58,7 +58,7 @@ jobs:
         run: |
           mkdir -p build
           cd build
-          qmake CONFIG+=release PREFIX=/usr ../YourProject.pro
+          qmake CONFIG+=release PREFIX=/usr ../BattleForFuture.pro
           make -j"$(nproc)"
 
       - name: Prepare AppDir
