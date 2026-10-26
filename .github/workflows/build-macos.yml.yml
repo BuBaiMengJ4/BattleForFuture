@@ -1,0 +1,103 @@
+name: Build macOS ARM64 (Qt 6.10.3)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  APP_NAME: BattleForFuture
+  QT_VERSION: '6.10.3'
+  # 消除 Node.js 弃用警告
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-macos-arm64:
+    # macos-14 和 macos-15 都是 Apple Silicon (ARM64) 架构
+    runs-on: macos-14 
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: mac
+          target: desktop
+          # Qt 6 在 macOS 上的预编译包名为 clang_64 (它是 Universal Binary，原生支持 ARM64)
+          arch: clang_64 
+          cache: true
+
+      - name: Set version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "VERSION=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"
+          else
+            echo "VERSION=dev-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+          fi
+
+      - name: Convert Icon to macOS .icns
+        run: |
+          # 1. 使用 Python 将 ico 转换为 png
+          python3 -m pip install Pillow
+          python3 -c "from PIL import Image; img = Image.open('WindowIcon.ico'); img.save('icon.png')"
+          
+          # 2. 使用 macOS 原生工具生成 .icns 所需的 iconset
+          mkdir icon.iconset
+          sips -z 16 16   icon.png --out icon.iconset/icon_16x16.png
+          sips -z 32 32   icon.png --out icon.iconset/icon_16x16@2x.png
+          sips -z 32 32   icon.png --out icon.iconset/icon_32x32.png
+          sips -z 64 64   icon.png --out icon.iconset/icon_32x32@2x.png
+          sips -z 128 128 icon.png --out icon.iconset/icon_128x128.png
+          sips -z 256 256 icon.png --out icon.iconset/icon_128x128@2x.png
+          sips -z 256 256 icon.png --out icon.iconset/icon_256x256.png
+          sips -z 512 512 icon.png --out icon.iconset/icon_256x256@2x.png
+          sips -z 512 512 icon.png --out icon.iconset/icon_512x512.png
+          cp icon.png icon.iconset/icon_512x512@2x.png
+          
+          # 3. 编译生成最终的 .icns 文件
+          iconutil -c icns icon.iconset -o BattleForFuture.icns
+
+      - name: Build with qmake
+        run: |
+          mkdir -p build
+          cd build
+          # 强制加上 app_bundle 确保生成 .app 目录结构
+          qmake CONFIG+=release CONFIG+=app_bundle ../BattleForFuture.pro
+          make -j"$(sysctl -n hw.ncpu)"
+
+      - name: Prepare App Bundle & Inject Icon
+        run: |
+          cd build
+          APP_PATH="BattleForFuture.app"
+          
+          # 将生成的 icns 复制到 .app 的资源目录
+          cp ../BattleForFuture.icns "$APP_PATH/Contents/Resources/"
+          
+          # 修改 Info.plist，让 macOS 识别自定义图标
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile BattleForFuture.icns" "$APP_PATH/Contents/Info.plist" || \
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string BattleForFuture.icns" "$APP_PATH/Contents/Info.plist"
+
+      - name: Deploy Qt Dependencies
+        run: |
+          cd build
+          # 使用 macdeployqt 将 Qt 运行库打包进 .app 中，使其脱离 Qt 环境独立运行
+          macdeployqt BattleForFuture.app -verbose=1
+
+      - name: Create DMG Package
+        run: |
+          cd build
+          # 使用 macOS 原生 hdiutil 打包成 .dmg 镜像
+          hdiutil create -volname "BattleForFuture" \
+            -srcfolder "BattleForFuture.app" \
+            -ov -format UDZO \
+            "../BattleForFuture-${{ env.VERSION }}-macOS-arm64.dmg"
+
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-arm64-package
+          path: BattleForFuture-*-macOS-arm64.dmg
