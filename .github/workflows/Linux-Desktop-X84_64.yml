@@ -113,13 +113,19 @@ jobs:
             --output appimage
 
           mv BattleForFuture*.AppImage "BattleForFuture-${{ env.VERSION }}-linux-x86_64.AppImage"
-
+          
       - name: Build deb and rpm with fpm
         run: |
           FPM_WORKDIR="${{ runner.temp }}/fpm-workdir"
           mkdir -p "$FPM_WORKDIR"
 
           for target in deb rpm; do
+            if [ "$target" = "deb" ]; then
+              DEPS=(--depends qt6-base --depends hicolor-icon-theme)
+            else
+              DEPS=(--depends qt6-qtbase --depends hicolor-icon-theme)
+            fi
+
             fpm -s dir -t "$target" \
               --workdir "$FPM_WORKDIR" \
               -a x86_64 \
@@ -129,8 +135,7 @@ jobs:
               --description "BattleForFuture application" \
               --url "https://github.com/${{ github.repository }}" \
               --license "MIT" \
-              --deb-depends "qt6-base, hicolor-icon-theme" \
-              --rpm-depends "qt6-qtbase, hicolor-icon-theme" \
+              "${DEPS[@]}" \
               -p "BattleForFuture-${{ env.VERSION }}-1.x86_64.${target}" \
               AppDir/=/
           done
