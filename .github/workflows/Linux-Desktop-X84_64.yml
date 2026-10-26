@@ -144,7 +144,8 @@ jobs:
 
       - name: Build Arch Linux package
         run: |
-          sed -i "s/^pkgver=.*/pkgver=${{ env.VERSION }}/" PKGBUILD
+          sed -i "s/^pkgver=.*/pkgver=${{ env.PKGVER }}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
 
           docker run --rm \
             -v "$PWD:/src" \
