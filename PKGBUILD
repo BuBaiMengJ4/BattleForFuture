@@ -1,5 +1,5 @@
 pkgname=yourapp
-pkgver=1.2.3
+pkgver=3.0.0
 pkgrel=1
 pkgdesc="Your application"
 arch=('x86_64')
