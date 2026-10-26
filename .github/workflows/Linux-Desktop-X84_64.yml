@@ -60,25 +60,37 @@ jobs:
           qmake CONFIG+=release PREFIX=/usr ../BattleForFuture.pro
           make -j"$(nproc)"
 
-      - name: Prepare AppDir
+            - name: Prepare AppDir
         run: |
           APP_DIR="$PWD/AppDir"
           mkdir -p "$APP_DIR/usr/bin"
           cp build/BattleForFuture "$APP_DIR/usr/bin/"
 
           mkdir -p "$APP_DIR/usr/share/applications"
-          if [ -f resources/battleforfuture.desktop ]; then
-            cp resources/battleforfuture.desktop "$APP_DIR/usr/share/applications/"
-          else
-            # 使用 echo -e 替代 heredoc，彻底避免 YAML 缩进解析错误
-            echo -e "[Desktop Entry]\nType=Application\nName=BattleForFuture\nExec=BattleForFuture\nIcon=battleforfuture\nCategories=Game;Utility;\nTerminal=false" > "$APP_DIR/usr/share/applications/battleforfuture.desktop"
+          mkdir -p resources
+          
+          # 👈 FIX: 自动将根目录的 WindowIcon.ico 转换为 Linux 需要的 PNG 格式
+          if [ -f WindowIcon.ico ]; then
+            echo "Found WindowIcon.ico, converting to PNG..."
+            # 提取 ico 的第一帧，并缩放为 256x256 的 png
+            convert 'WindowIcon.ico[0]' -resize 256x256 "resources/battleforfuture.png"
           fi
 
+          # 判断最终是否有可用的 png 图标
+          ICON_NAME="application-x-executable" # 默认系统图标
           if [ -f resources/battleforfuture.png ]; then
+            ICON_NAME="battleforfuture"
             mkdir -p "$APP_DIR/usr/share/icons/hicolor/256x256/apps"
             cp resources/battleforfuture.png "$APP_DIR/usr/share/icons/hicolor/256x256/apps/"
           fi
 
+          # 生成或修正 .desktop 文件
+          if [ -f resources/battleforfuture.desktop ]; then
+            sed -i "s/^Icon=.*/Icon=$ICON_NAME/" resources/battleforfuture.desktop
+            cp resources/battleforfuture.desktop "$APP_DIR/usr/share/applications/"
+          else
+            echo -e "[Desktop Entry]\nType=Application\nName=BattleForFuture\nExec=BattleForFuture\nIcon=$ICON_NAME\nCategories=Game;Utility;\nTerminal=false" > "$APP_DIR/usr/share/applications/battleforfuture.desktop"
+          fi
       - name: Build AppImage
         run: |
           export APPIMAGE_EXTRACT_AND_RUN=1
