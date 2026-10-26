@@ -54,6 +54,8 @@ jobs:
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
           SAFE_VERSION=$(echo "$VERSION" | sed 's/-/~/')
           echo "SAFE_VERSION=$SAFE_VERSION" >> "$GITHUB_ENV"
+          PKGVER=$(echo "$VERSION" | sed 's/-/_/g')
+          echo "PKGVER=$PKGVER" >> "$GITHUB_ENV"
 
       - name: Build with qmake
         run: |
