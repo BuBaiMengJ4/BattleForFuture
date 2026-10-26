@@ -9,7 +9,6 @@ on:
 env:
   APP_NAME: YourApp
   QT_VERSION: '6.10.3'
-  # 消除 actions/checkout@v4、upload-artifact@v4 的 Node.js 20 弃用警告
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
@@ -51,6 +50,9 @@ jobs:
           else
             echo "VERSION=dev-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
           fi
+          
+          SAFE_VERSION=$(echo "${{ env.VERSION }}" | sed 's/-/~/')
+          echo "SAFE_VERSION=$SAFE_VERSION" >> "$GITHUB_ENV"
 
       - name: Build with qmake
         run: |
@@ -85,26 +87,6 @@ jobs:
             cp resources/yourapp.png "$APP_DIR/usr/share/icons/hicolor/256x256/apps/"
           fi
 
-      # 先打 deb/rpm，保证 AppDir 里没有 AppImage 专用文件
-      - name: Build deb and rpm with fpm
-        run: |
-          FPM_WORKDIR="${{ runner.temp }}/fpm-workdir"
-          mkdir -p "$FPM_WORKDIR"
-
-          for target in deb rpm; do
-            fpm -s dir -t "$target" \
-              --workdir "$FPM_WORKDIR" \
-              -a x86_64 \
-              -n yourapp \
-              -v "$VERSION" \
-              --maintainer "you@example.com" \
-              --description "Your application description" \
-              --url "https://github.com/${{ github.repository }}" \
-              --license "MIT" \
-              -p "YourApp-${VERSION}-1.x86_64.${target}" \
-              AppDir/=/
-          done
-
       - name: Build AppImage
         run: |
           export APPIMAGE_EXTRACT_AND_RUN=1
@@ -117,18 +99,42 @@ jobs:
             https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
 
           chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage
-          # linuxdeploy --plugin qt 查找的是不带 .AppImage 后缀的可执行文件
           ln -sf linuxdeploy-plugin-qt.AppImage linuxdeploy-plugin-qt
-
+          
           ./linuxdeploy.AppImage \
             --appdir AppDir \
+            --executable AppDir/usr/bin/YourApp \
+            --desktop-file AppDir/usr/share/applications/yourapp.desktop \
             --plugin qt \
             --output appimage
 
-          mv YourApp*.AppImage "YourApp-${VERSION}-linux-x86_64.AppImage"
+          mv YourApp*.AppImage "YourApp-${{ env.VERSION }}-linux-x86_64.AppImage"
+
+      - name: Build deb and rpm with fpm
+        run: |
+          FPM_WORKDIR="${{ runner.temp }}/fpm-workdir"
+          mkdir -p "$FPM_WORKDIR"
+
+          for target in deb rpm; do
+            fpm -s dir -t "$target" \
+              --workdir "$FPM_WORKDIR" \
+              -a x86_64 \
+              -n yourapp \
+              -v "${{ env.SAFE_VERSION }}" \
+              --maintainer "you@example.com" \
+              --description "Your application description" \
+              --url "https://github.com/${{ github.repository }}" \
+              --license "MIT" \
+              --deb-depends "qt6-base" \
+              --rpm-depends "qt6-qtbase" \
+              -p "YourApp-${{ env.VERSION }}-1.x86_64.${target}" \
+              AppDir/=/
+          done
 
       - name: Build Arch Linux package
         run: |
+          sed -i "s/^pkgver=.*/pkgver=${{ env.VERSION }}/" PKGBUILD
+          
           docker run --rm \
             -v "$PWD:/src" \
             -w /src \
@@ -137,10 +143,38 @@ jobs:
               set -e
               pacman -Sy --noconfirm base-devel qt6-base qt6-tools
               useradd -m builder
+              echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
               chown -R builder:builder /src
               su builder -c "
                 cd /src
-                makepkg --noconfirm --skipchecksums
+                # -s 会自动安装 makedepends 中声明的依赖
+                makepkg -s --noconfirm --skipchecksums
+              "
+            '
+          package() {
+              install -Dm755 "${srcdir}/../build/YourApp" "${pkgdir}/usr/bin/YourApp"
+              if [ -f "${srcdir}/../AppDir/usr/share/applications/yourapp.desktop" ]; then
+                  install -Dm644 "${srcdir}/../AppDir/usr/share/applications/yourapp.desktop" "${pkgdir}/usr/share/applications/yourapp.desktop"
+              fi
+              if [ -f "${srcdir}/../AppDir/usr/share/icons/hicolor/256x256/apps/yourapp.png" ]; then
+                  install -Dm644 "${srcdir}/../AppDir/usr/share/icons/hicolor/256x256/apps/yourapp.png" "${pkgdir}/usr/share/icons/hicolor/256x256/apps/yourapp.png"
+              fi
+          }
+          EOF
+
+          docker run --rm \
+            -v "$PWD:/src" \
+            -w /src \
+            archlinux:latest \
+            bash -c '
+              set -e
+              pacman -Sy --noconfirm base-devel qt6-base qt6-tools
+              useradd -m builder
+              echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+              chown -R builder:builder /src
+              su builder -c "
+                cd /src
+                makepkg -s --noconfirm --skipchecksums
               "
             '
 
