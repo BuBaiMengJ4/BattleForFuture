@@ -74,13 +74,16 @@ jobs:
           cd build
           APP_PATH="BattleForFuture.app"
           
+          # 👈 FIX: 强制创建 Resources 目录，防止 qmake 未自动生成导致 cp 失败
+          mkdir -p "$APP_PATH/Contents/Resources"
+          
           # 将生成的 icns 复制到 .app 的资源目录
           cp ../BattleForFuture.icns "$APP_PATH/Contents/Resources/"
           
           # 修改 Info.plist，让 macOS 识别自定义图标
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile BattleForFuture.icns" "$APP_PATH/Contents/Info.plist" || \
+          # 使用 || 确保如果键不存在则添加，如果已存在则修改
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIconFile BattleForFuture.icns" "$APP_PATH/Contents/Info.plist" 2>/dev/null || \
           /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string BattleForFuture.icns" "$APP_PATH/Contents/Info.plist"
-
       - name: Deploy Qt Dependencies
         run: |
           cd build
