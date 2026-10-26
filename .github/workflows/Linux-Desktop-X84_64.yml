@@ -50,8 +50,6 @@ jobs:
           else
             echo "VERSION=dev-${GITHUB_SHA::7}" >> "$GITHUB_ENV"
           fi
-          
-          # 将 dev-xxx 转换为 dev~xxx，符合 Debian/Arch 版本规范
           SAFE_VERSION=$(echo "${{ env.VERSION }}" | sed 's/-/~/')
           echo "SAFE_VERSION=$SAFE_VERSION" >> "$GITHUB_ENV"
 
@@ -66,22 +64,14 @@ jobs:
         run: |
           APP_DIR="$PWD/AppDir"
           mkdir -p "$APP_DIR/usr/bin"
-          # 👈 FIX: 使用正确的项目可执行文件名
           cp build/BattleForFuture "$APP_DIR/usr/bin/"
 
           mkdir -p "$APP_DIR/usr/share/applications"
           if [ -f resources/battleforfuture.desktop ]; then
             cp resources/battleforfuture.desktop "$APP_DIR/usr/share/applications/"
           else
-            cat > "$APP_DIR/usr/share/applications/battleforfuture.desktop" <<'EOF'
-[Desktop Entry]
-Type=Application
-Name=BattleForFuture
-Exec=BattleForFuture
-Icon=battleforfuture
-Categories=Game;Utility;
-Terminal=false
-EOF
+            # 使用 echo -e 替代 heredoc，彻底避免 YAML 缩进解析错误
+            echo -e "[Desktop Entry]\nType=Application\nName=BattleForFuture\nExec=BattleForFuture\nIcon=battleforfuture\nCategories=Game;Utility;\nTerminal=false" > "$APP_DIR/usr/share/applications/battleforfuture.desktop"
           fi
 
           if [ -f resources/battleforfuture.png ]; then
@@ -110,7 +100,6 @@ EOF
             --plugin qt \
             --output appimage
 
-          # 👈 FIX: 确保重命名后的文件名与 artifact 路径匹配
           mv BattleForFuture*.AppImage "BattleForFuture-${{ env.VERSION }}-linux-x86_64.AppImage"
 
       - name: Build deb and rpm with fpm
@@ -136,33 +125,7 @@ EOF
 
       - name: Build Arch Linux package
         run: |
-          # 👈 FIX: 动态生成优化后的 PKGBUILD (直接使用已编译产物，无需在 Docker 中重复编译)
-          cat > PKGBUILD <<'EOF'
-pkgname=battleforfuture
-pkgver=3.0.0
-pkgrel=1
-pkgdesc="BattleForFuture application"
-arch=('x86_64')
-url="https://github.com/${{ github.repository }}"
-license=('MIT')
-depends=('qt6-base' 'hicolor-icon-theme')
-source=()
-
-package() {
-  # 直接使用 Ubuntu runner 已经编译好的二进制文件
-  install -Dm755 /src/build/BattleForFuture "$pkgdir/usr/bin/battleforfuture"
-  
-  if [ -f /src/resources/battleforfuture.desktop ]; then
-    install -Dm644 /src/resources/battleforfuture.desktop "$pkgdir/usr/share/applications/battleforfuture.desktop"
-  fi
-  
-  if [ -f /src/resources/battleforfuture.png ]; then
-    install -Dm644 /src/resources/battleforfuture.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/battleforfuture.png"
-  fi
-}
-EOF
-
-          # 动态替换 PKGBUILD 中的版本号
+          # 直接修改仓库中已有的 PKGBUILD 文件的版本号，无需重新生成整个文件
           sed -i "s/^pkgver=.*/pkgver=${{ env.VERSION }}/" PKGBUILD
           
           docker run --rm \
@@ -177,7 +140,6 @@ EOF
               chown -R builder:builder /src
               su builder -c "
                 cd /src
-                # -s 自动处理依赖，--skipchecksums 跳过空 source 的校验
                 makepkg -s --noconfirm --skipchecksums
               "
             '
