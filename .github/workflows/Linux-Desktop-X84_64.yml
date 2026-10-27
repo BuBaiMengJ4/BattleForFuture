@@ -1,0 +1,174 @@
+name: Build Linux Packages (Qt 6.10.3)
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+env:
+  APP_NAME: BattleForFuture
+  QT_VERSION: '6.10.3'
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          arch: linux_gcc_64
+          cache: true
+
+      - name: Install build and packaging tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            libgl1-mesa-dev \
+            libfuse2 \
+            patchelf \
+            zstd \
+            rpm \
+            libarchive-tools \
+            ruby \
+            ruby-dev \
+            imagemagick
+          sudo gem install fpm -v 1.15.1 --no-document
+
+      - name: Set version
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="dev-${GITHUB_SHA::7}"
+          fi
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+          SAFE_VERSION=$(echo "$VERSION" | sed 's/-/~/')
+          echo "SAFE_VERSION=$SAFE_VERSION" >> "$GITHUB_ENV"
+          PKGVER=$(echo "$VERSION" | sed 's/-/_/g')
+          echo "PKGVER=$PKGVER" >> "$GITHUB_ENV"
+
+      - name: Build with qmake
+        run: |
+          mkdir -p build
+          cd build
+          qmake CONFIG+=release PREFIX=/usr ../BattleForFuture.pro
+          make -j"$(nproc)"
+
+      - name: Prepare AppDir
+        run: |
+          APP_DIR="$PWD/AppDir"
+          mkdir -p "$APP_DIR/usr/bin"
+          cp build/BattleForFuture "$APP_DIR/usr/bin/"
+
+          mkdir -p "$APP_DIR/usr/share/applications"
+          mkdir -p resources
+
+          # 自动将根目录的 WindowIcon.ico 转换为 Linux 需要的 PNG 格式
+          if [ -f WindowIcon.ico ]; then
+            echo "Found WindowIcon.ico, converting to PNG..."
+            convert 'WindowIcon.ico[0]' -resize 256x256 "resources/battleforfuture.png"
+          fi
+
+          ICON_NAME="application-x-executable"
+          if [ -f resources/battleforfuture.png ]; then
+            ICON_NAME="battleforfuture"
+            mkdir -p "$APP_DIR/usr/share/icons/hicolor/256x256/apps"
+            cp resources/battleforfuture.png "$APP_DIR/usr/share/icons/hicolor/256x256/apps/"
+          fi
+
+          if [ -f resources/battleforfuture.desktop ]; then
+            sed -i "s/^Icon=.*/Icon=$ICON_NAME/" resources/battleforfuture.desktop
+            cp resources/battleforfuture.desktop "$APP_DIR/usr/share/applications/"
+          else
+            echo -e "[Desktop Entry]\nType=Application\nName=BattleForFuture\nExec=BattleForFuture\nIcon=$ICON_NAME\nCategories=Game;Utility;\nTerminal=false" > "$APP_DIR/usr/share/applications/battleforfuture.desktop"
+          fi
+
+      - name: Build AppImage
+        run: |
+          export APPIMAGE_EXTRACT_AND_RUN=1
+          export QMAKE="$(which qmake)"
+          export NO_STRIP=true
+
+          wget -q -O linuxdeploy.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q -O linuxdeploy-plugin-qt.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+
+          chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage
+          ln -sf linuxdeploy-plugin-qt.AppImage linuxdeploy-plugin-qt
+
+          ./linuxdeploy.AppImage \
+            --appdir AppDir \
+            --executable AppDir/usr/bin/BattleForFuture \
+            --desktop-file AppDir/usr/share/applications/battleforfuture.desktop \
+            --plugin qt \
+            --output appimage
+
+          mv BattleForFuture*.AppImage "BattleForFuture-${{ env.VERSION }}-linux-x86_64.AppImage"
+          
+      - name: Build deb and rpm with fpm
+        run: |
+          FPM_WORKDIR="${{ runner.temp }}/fpm-workdir"
+          mkdir -p "$FPM_WORKDIR"
+
+          for target in deb rpm; do
+            if [ "$target" = "deb" ]; then
+              DEPS=(--depends qt6-base --depends hicolor-icon-theme)
+            else
+              DEPS=(--depends qt6-qtbase --depends hicolor-icon-theme)
+            fi
+
+            fpm -s dir -t "$target" \
+              --workdir "$FPM_WORKDIR" \
+              -a x86_64 \
+              -n battleforfuture \
+              -v "${{ env.SAFE_VERSION }}" \
+              --maintainer "you@example.com" \
+              --description "BattleForFuture application" \
+              --url "https://github.com/${{ github.repository }}" \
+              --license "MIT" \
+              "${DEPS[@]}" \
+              -p "BattleForFuture-${{ env.VERSION }}-1.x86_64.${target}" \
+              AppDir/=/
+          done
+
+      - name: Build Arch Linux package
+        run: |
+          sed -i "s/^pkgver=.*/pkgver=${{ env.PKGVER }}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+
+          docker run --rm \
+            -v "$PWD:/src" \
+            -w /src \
+            archlinux:latest \
+            bash -c '
+              set -e
+              pacman -Sy --noconfirm base-devel qt6-base
+              useradd -m builder
+              echo "builder ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+              chown -R builder:builder /src
+              su builder -c "
+                cd /src
+                makepkg -s --noconfirm --skipchecksums
+              "
+            '
+
+      - name: Upload Linux artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-packages
+          path: |
+            BattleForFuture-*-linux-x86_64.AppImage
+            BattleForFuture-*-1.x86_64.deb
+            BattleForFuture-*-1.x86_64.rpm
+            *.pkg.tar.zst
