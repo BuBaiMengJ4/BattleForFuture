@@ -1,11 +1,18 @@
 # BattleForFuture
 这是一个适用于2026届高考生的倒计时小工具
 
-![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20Linux-lightgrey)
-![Version](https://img.shields.io/badge/Version-2.2.0-brightgreen)
+![Platform](https://img.shields.io/badge/Windows-0078D4?logo=windows&logoColor=white)
+![Platform](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)
+![Platform](https://img.shields.io/badge/Ubuntu-E95420?logo=ubuntu&logoColor=white)
+![Platform](https://img.shields.io/badge/Debian-D70A53?logo=debian&logoColor=white)
+![Platform](https://img.shields.io/badge/RedHat-EE0000?logo=redhat&logoColor=white)
+![Platform](https://img.shields.io/badge/ArchLinux-1793D1?logo=archlinux&logoColor=white)
+![Platform](https://img.shields.io/badge/HarmonyOS%20PC-E60012?logo=harmonyos&logoColor=white)
+![Version](https://img.shields.io/badge/Version-3.0-brightgreen)
 
 
 > "乾坤未定，你我皆黑马！" - 让BattleForFuture成为你的高考战友
+
 
 ## 功能亮点
 
@@ -27,7 +34,7 @@
 - 选择样式 2 时，「背景色」设置会自动禁用并给出原因提示（切回样式 1 自动恢复，原取值不会被清除）。
 
 ### 💻 跨平台显示
-- Windows / Linux 行为一致：透明区域不会出现黑块（详见下文「Linux 透明实现」）。
+- Windows / macOS / Linux / HarmonyOS PC 行为一致：透明区域不会出现黑块（详见下文「Linux 透明实现」）。
 
 ## 技术架构
 
@@ -49,16 +56,45 @@ graph TD
 ## 安装指南
 
 ### Windows
-1. 下载压缩包 `BattleForFuture.zip`
-2. 解压到指定位置
-3. 启动程序 `BattleForFuture.exe`
+提供三种分发形式，任选其一：
+
+| 形式 | 说明 |
+| --- | --- |
+| **`BattleForFuture.zip`** | 免安装绿色包，解压后启动 `BattleForFuture.exe` |
+| **`BattleForFuture.msix`** | 已签名的 MSIX 安装包，双击安装即可 |
+| **Microsoft Store** | 一键安装，自动更新（推荐） |
+
+[![Microsoft Store](https://img.shields.io/badge/Microsoft%20Store-%E4%B8%8B%E8%BD%BD-blue?logo=microsoftstore&logoColor=white)](https://apps.microsoft.com/detail/xxxxxxxxxxxx)
+
+> 链接占位：`https://apps.microsoft.com/detail/xxxxxxxxxxxx`（请替换为实际 Store 商品 ID）
+
+### macOS
+1. 下载 `BattleForFuture.dmg`（**未签名**版本）
+2. 打开 DMG，将 `BattleForFuture.app` 拖入「Applications」
+3. 首次启动会被 Gatekeeper 拦截，请在「系统设置 → 隐私与安全性」中点击「仍要打开」，或在 Finder 中右键 → 打开
 
 ### Linux
-1. 解压 `BattleForFuture.tar.gz`
-2. 确保已安装 Qt 6 运行库与 xcb 平台插件
-3. 运行 `./BattleForFuture`
+按发行版选择对应安装包：
 
+| 发行版 / 场景 | 安装包 | 安装方式 |
+| --- | --- | --- |
+| **Ubuntu / Debian** | `BattleForFuture.deb` | `sudo apt install ./BattleForFuture.deb` |
+| **RedHat / Fedora / openSUSE** | `BattleForFuture.rpm` | `sudo dnf install ./BattleForFuture.rpm` |
+| **通用（免安装）** | `BattleForFuture.AppImage` | `chmod +x BattleForFuture.AppImage && ./BattleForFuture.AppImage` |
+| **便携 / 源码包** | `BattleForFuture.pst.tar.gst` | 解压后运行 `./BattleForFuture` |
+
+> 确保已安装 Qt 6 运行库与 xcb 平台插件。
 > 若你的 X11 会话确实有合成器但被判定为不支持，可设置环境变量 `BFF_ASSUME_COMPOSITED=1` 强制启用透明。
+
+### HarmonyOS PC
+1. 下载**已签名**的 `BattleForFuture.hap`
+2. 方式一：通过应用市场一键安装（推荐）
+
+[![HarmonyOS AppGallery](https://img.shields.io/badge/HarmonyOS%20AppGallery-%E5%BA%94%E7%94%A8%E5%B8%82%E5%9C%BA-E60012?logo=harmonyos&logoColor=white)](https://appgallery.huawei.com/app/xxxxxxxxxx)
+
+3. 方式二：使用 `hdc` 手动侧载已签名的 HAP
+
+> 链接占位：`https://appgallery.huawei.com/app/xxxxxxxxxx`（请替换为实际应用市场 ID）
 
 ## 使用教程
 ```
@@ -129,3 +165,24 @@ BattleForFuture/
 
 **为梦想而战，你我皆是黑马！** ✨  
 愿每位考生都能在高考中取得理想成绩，金榜题名！
+
+---
+
+### 修改说明
+
+1. **版本号**：`Version-2.2.0` → `Version-3.0`。
+2. **平台徽章**：由原来的 `Windows | Linux` 灰色徽章，改为 7 个平台徽章，每个都带官方 Logo 与对应配色：
+   - Windows → `0078D4` 蓝 · `logo=windows`
+   - macOS → `000000` 黑 · `logo=apple`
+   - Ubuntu → `E95420` 橙 · `logo=ubuntu`
+   - Debian → `D70A53` 粉 · `logo=debian`
+   - RedHat → `EE0000` 红 · `logo=redhat`
+   - ArchLinux → `1793D1` 蓝 · `logo=archlinux`
+   - HarmonyOS PC → `E60012` 红 · `logo=harmonyos`
+3. **安装指南**改写为分平台表格：
+   - **Windows**：`BattleForFuture.zip`、`BattleForFuture.msix`（已签名）、Microsoft Store 徽章链接
+   - **macOS**：`BattleForFuture.dmg`（未签名，附 Gatekeeper 放行说明）
+   - **Linux**：`.deb`、`.rpm`、`.AppImage`、`.pst.tar.gst`，并附各包安装命令
+   - **HarmonyOS PC**：已签名 `.hap` + 应用市场徽章链接
+
+> ⚠️ 两处占位链接（`apps.microsoft.com/detail/xxxxxxxxxxxx` 与 `appgallery.huawei.com/app/xxxxxxxxxx`）请替换为你真实的商品 ID；另外 `pst.tar.gst` 按你原文保留，若实际是 `portable.tar.gz` 之类的笔误，请自行更正。
