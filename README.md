@@ -1,5 +1,5 @@
 # BattleForFuture
-这是一个适用于2026届高考生的倒计时小工具
+这是一个适用于中国高考生的倒计时小工具
 
 ![Platform](https://img.shields.io/badge/Windows-0078D4?logo=windows&logoColor=white)
 ![Platform](https://img.shields.io/badge/macOS-000000?logo=apple&logoColor=white)
@@ -167,22 +167,3 @@ BattleForFuture/
 愿每位考生都能在高考中取得理想成绩，金榜题名！
 
 ---
-
-### 修改说明
-
-1. **版本号**：`Version-2.2.0` → `Version-3.0`。
-2. **平台徽章**：由原来的 `Windows | Linux` 灰色徽章，改为 7 个平台徽章，每个都带官方 Logo 与对应配色：
-   - Windows → `0078D4` 蓝 · `logo=windows`
-   - macOS → `000000` 黑 · `logo=apple`
-   - Ubuntu → `E95420` 橙 · `logo=ubuntu`
-   - Debian → `D70A53` 粉 · `logo=debian`
-   - RedHat → `EE0000` 红 · `logo=redhat`
-   - ArchLinux → `1793D1` 蓝 · `logo=archlinux`
-   - HarmonyOS PC → `E60012` 红 · `logo=harmonyos`
-3. **安装指南**改写为分平台表格：
-   - **Windows**：`BattleForFuture.zip`、`BattleForFuture.msix`（已签名）、Microsoft Store 徽章链接
-   - **macOS**：`BattleForFuture.dmg`（未签名，附 Gatekeeper 放行说明）
-   - **Linux**：`.deb`、`.rpm`、`.AppImage`、`.pst.tar.gst`，并附各包安装命令
-   - **HarmonyOS PC**：已签名 `.hap` + 应用市场徽章链接
-
-> ⚠️ 两处占位链接（`apps.microsoft.com/detail/xxxxxxxxxxxx` 与 `appgallery.huawei.com/app/xxxxxxxxxx`）请替换为你真实的商品 ID；另外 `pst.tar.gst` 按你原文保留，若实际是 `portable.tar.gz` 之类的笔误，请自行更正。
